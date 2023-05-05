@@ -1,0 +1,391 @@
+{
+  "nodes": {
+    "ameba-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1679041484,
+        "narHash": "sha256-pc9mtVR/PBhM5l1PnDkm+y+McxbrfAmQzxmLi761VF4=",
+        "owner": "crystal-ameba",
+        "repo": "ameba",
+        "rev": "7c74d196d6d9a496a81a0c7b79ef44f39faf41b8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "crystal-ameba",
+        "ref": "v1.4.3",
+        "repo": "ameba",
+        "type": "github"
+      }
+    },
+    "bdwgc-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1661523039,
+        "narHash": "sha256-UYJQGeSykmfydGAmTlNJNyAPBasBkddOSoopBHiY7TI=",
+        "owner": "ivmai",
+        "repo": "bdwgc",
+        "rev": "cd1fbc1dbfd2cc888436944dd2784f39820698d7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ivmai",
+        "ref": "v8.2.2",
+        "repo": "bdwgc",
+        "type": "github"
+      }
+    },
+    "crystal": {
+      "inputs": {
+        "ameba-src": "ameba-src",
+        "bdwgc-src": "bdwgc-src",
+        "crystal-aarch64-darwin": "crystal-aarch64-darwin",
+        "crystal-src": "crystal-src",
+        "crystal-x86_64-darwin": "crystal-x86_64-darwin",
+        "crystal-x86_64-linux": "crystal-x86_64-linux",
+        "crystalline-src": "crystalline-src",
+        "flake-parts": "flake-parts",
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1683429373,
+        "narHash": "sha256-Mx5lwMyk2T40wFqOoYcJLs4srwO2UrsepTZhlHNuTrI=",
+        "owner": "manveru",
+        "repo": "crystal-flake",
+        "rev": "e7a443c20e2be6e5dd870586705dd27c91aa9c5c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "manveru",
+        "repo": "crystal-flake",
+        "type": "github"
+      }
+    },
+    "crystal-aarch64-darwin": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-NqYaZHM3kHAgYbO0RDJtA8eHqp4vVe4MBpisTOGrRVw=",
+        "type": "tarball",
+        "url": "https://github.com/crystal-lang/crystal/releases/download/1.8.1/crystal-1.8.1-1-darwin-universal.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/crystal-lang/crystal/releases/download/1.8.1/crystal-1.8.1-1-darwin-universal.tar.gz"
+      }
+    },
+    "crystal-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1681995387,
+        "narHash": "sha256-t+1vM1m62UftCvfa90Dg6nqt6Zseh/GP/Gc1VfOa4+c=",
+        "owner": "crystal-lang",
+        "repo": "crystal",
+        "rev": "a59a3dbd738269d5aad6051c3834fc70f482f469",
+        "type": "github"
+      },
+      "original": {
+        "owner": "crystal-lang",
+        "ref": "1.8.1",
+        "repo": "crystal",
+        "type": "github"
+      }
+    },
+    "crystal-x86_64-darwin": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-NqYaZHM3kHAgYbO0RDJtA8eHqp4vVe4MBpisTOGrRVw=",
+        "type": "tarball",
+        "url": "https://github.com/crystal-lang/crystal/releases/download/1.8.1/crystal-1.8.1-1-darwin-universal.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/crystal-lang/crystal/releases/download/1.8.1/crystal-1.8.1-1-darwin-universal.tar.gz"
+      }
+    },
+    "crystal-x86_64-linux": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-/Jk3uiglM/hzjygxmMUgVTvz+tuFFjBv8+uUIL05rXo=",
+        "type": "tarball",
+        "url": "https://github.com/crystal-lang/crystal/releases/download/1.8.1/crystal-1.8.1-1-linux-x86_64.tar.gz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://github.com/crystal-lang/crystal/releases/download/1.8.1/crystal-1.8.1-1-linux-x86_64.tar.gz"
+      }
+    },
+    "crystalline-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1681549124,
+        "narHash": "sha256-kx3rdGqIbrOaHY7V3uXLqIFEYzzsMKzNwZ6Neq8zM3c=",
+        "owner": "elbywan",
+        "repo": "crystalline",
+        "rev": "4ac0ae282c5f4172230fea1e93df51c2b380f475",
+        "type": "github"
+      },
+      "original": {
+        "owner": "elbywan",
+        "ref": "v0.9.0",
+        "repo": "crystalline",
+        "type": "github"
+      }
+    },
+    "fenix": {
+      "inputs": {
+        "nixpkgs": [
+          "statix",
+          "nixpkgs"
+        ],
+        "rust-analyzer-src": "rust-analyzer-src"
+      },
+      "locked": {
+        "lastModified": 1645251813,
+        "narHash": "sha256-cQ66tGjnZclBCS3nD26mZ5fUH+3/HnysGffBiWXUSHk=",
+        "owner": "nix-community",
+        "repo": "fenix",
+        "rev": "9892337b588c38ec59466a1c89befce464aae7f8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "fenix",
+        "type": "github"
+      }
+    },
+    "flake-parts": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib"
+      },
+      "locked": {
+        "lastModified": 1672152762,
+        "narHash": "sha256-U8iWWHgabN07zfbgedogMVWrEP1Zywyf3Yx3OYHSSgE=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "19e0f88324d90509141e192664ded98bb88ef9b2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_2": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib_2"
+      },
+      "locked": {
+        "lastModified": 1682984683,
+        "narHash": "sha256-fSMthG+tp60AHhNmaHc4StT3ltfHkQsJtN8GhfLWmtI=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "86684881e184f41aa322e653880e497b66429f3e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "inclusive": {
+      "inputs": {
+        "stdlib": "stdlib"
+      },
+      "locked": {
+        "lastModified": 1628098927,
+        "narHash": "sha256-Ft4sdf7VPL8MQtu18AAPiN2s5pUsbv+3RxqzJSa/yzg=",
+        "owner": "input-output-hk",
+        "repo": "nix-inclusive",
+        "rev": "13123eb7a8c3359738a4756b8d645729e8655b27",
+        "type": "github"
+      },
+      "original": {
+        "owner": "input-output-hk",
+        "repo": "nix-inclusive",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1677543769,
+        "narHash": "sha256-LwbqS8vGisXl2WHpK9r5+kodr0zoIT8F2YB0R4y1TsA=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b26d52c9feb6476580016e78935cbf96eb3e2115",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-22.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs-lib": {
+      "locked": {
+        "dir": "lib",
+        "lastModified": 1671359686,
+        "narHash": "sha256-3MpC6yZo+Xn9cPordGz2/ii6IJpP2n8LE8e/ebUXLrs=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "04f574a1c0fde90b51bf68198e2297ca4e7cccf4",
+        "type": "github"
+      },
+      "original": {
+        "dir": "lib",
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs-lib_2": {
+      "locked": {
+        "dir": "lib",
+        "lastModified": 1682879489,
+        "narHash": "sha256-sASwo8gBt7JDnOOstnps90K1wxmVfyhsTPPNTGBPjjg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "da45bf6ec7bbcc5d1e14d3795c025199f28e0de0",
+        "type": "github"
+      },
+      "original": {
+        "dir": "lib",
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1667969101,
+        "narHash": "sha256-GL53T705HO7Q/KVfbb5STx8AxFs8YgaGY8pvAZC+O7U=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "bbf77421ac51a7c93f5f0f760da99e4dbce614fa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_3": {
+      "locked": {
+        "lastModified": 1645013224,
+        "narHash": "sha256-b7OEC8vwzJv3rsz9pwnTX2LQDkeOWz2DbKypkVvNHXc=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "b66b39216b1fef2d8c33cc7a5c72d8da80b79970",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_4": {
+      "locked": {
+        "lastModified": 1680945546,
+        "narHash": "sha256-8FuaH5t/aVi/pR1XxnF0qi4WwMYC+YxlfdsA0V+TEuQ=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "d9f759f2ea8d265d974a6e1259bd510ac5844c5d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "crystal": "crystal",
+        "flake-parts": "flake-parts_2",
+        "inclusive": "inclusive",
+        "nixpkgs": "nixpkgs_2",
+        "statix": "statix",
+        "treefmt-nix": "treefmt-nix"
+      }
+    },
+    "rust-analyzer-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1645205556,
+        "narHash": "sha256-e4lZW3qRyOEJ+vLKFQP7m2Dxh5P44NrnekZYLxlucww=",
+        "owner": "rust-analyzer",
+        "repo": "rust-analyzer",
+        "rev": "acf5874b39f3dc5262317a6074d9fc7285081161",
+        "type": "github"
+      },
+      "original": {
+        "owner": "rust-analyzer",
+        "ref": "nightly",
+        "repo": "rust-analyzer",
+        "type": "github"
+      }
+    },
+    "statix": {
+      "inputs": {
+        "fenix": "fenix",
+        "nixpkgs": "nixpkgs_3"
+      },
+      "locked": {
+        "lastModified": 1676888642,
+        "narHash": "sha256-C73LOMVVCkeL0jA5xN7klLEDEB4NkuiATEJY4A/tIyM=",
+        "owner": "nerdypepper",
+        "repo": "statix",
+        "rev": "3c7136a23f444db252a556928c1489869ca3ab4e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nerdypepper",
+        "repo": "statix",
+        "type": "github"
+      }
+    },
+    "stdlib": {
+      "locked": {
+        "lastModified": 1590026685,
+        "narHash": "sha256-E5INrVvYX/P/UpcoUFDAsuHem+lsqT+/teBs9O7oc9Q=",
+        "owner": "manveru",
+        "repo": "nix-lib",
+        "rev": "99088cf7febcdb21afd375a335dcafa959bef3ed",
+        "type": "github"
+      },
+      "original": {
+        "owner": "manveru",
+        "repo": "nix-lib",
+        "type": "github"
+      }
+    },
+    "treefmt-nix": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_4"
+      },
+      "locked": {
+        "lastModified": 1683117219,
+        "narHash": "sha256-IyNRNRxw0slA3VQySVA7QPXHMOxlbx0ePWvj9oln+Wk=",
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "rev": "c8c3731dc404f837f38f89c2c5ffc2afc02e249d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
