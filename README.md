@@ -1,5 +1,6 @@
 # auth-keys-hub
 
+
 auth-keys-hub is a command-line tool to automatically fetch the authorized keys
 for GitHub users and teams. It's designed to be executed via the
 `AuthorizedKeysCommand` configuration in OpenSSH. It fetches the public keys of
