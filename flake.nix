@@ -8,15 +8,17 @@
     statix.url = "github:nerdypepper/statix";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     crystal.url = "github:manveru/crystal-flake";
+    tullia.url = "github:input-output-hk/tullia";
   };
 
   outputs = inputs:
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux" "aarch64-linux"];
+      systems = ["x86_64-linux"];
 
       imports = [
         inputs.flake-parts.flakeModules.easyOverlay
         inputs.treefmt-nix.flakeModule
+        inputs.tullia.flakePartsModules.default
       ];
 
       perSystem = {
@@ -100,6 +102,36 @@
           };
           projectRootFile = "flake.nix";
         };
+
+        tullia.tasks = let
+          common = {
+            preset = {
+              nix.enable = true;
+              github.ci = builtins.mapAttrs (_: pkgs.lib.mkDefault) {
+                enable = config.actionRun.facts != {};
+                repository = "input-output-hk/auth-keys-hub";
+                remote = config.preset.github.lib.readRepository "GitHub Push or PR" "";
+                revision = config.preset.github.lib.readRevision "GitHub Push or PR" "";
+              };
+            };
+
+            nomad.driver = "exec";
+          };
+        in {
+          build = {config, ...}: {
+            imports = [common];
+
+            config = {
+              memory = 1024 * 8;
+              nomad.resources.cpu = 3000;
+              command.text = ''
+                for package in $(nix eval .#packages.x86_64-linux --apply __attrNames --json | jq -r '.[]'); do
+                  nix build -L ".#packages.x86_64-linux.$package"
+                done
+              '';
+            };
+          };
+        };
       };
 
       flake.nixosModules.auth-keys-hub = {
@@ -138,23 +170,29 @@
               description = "Directory used to cache the authorized_keys file";
             };
 
+            ttl = lib.mkOption {
+              type = lib.types.str;
+              default = "1h";
+              description = "how often to fetch new keys, format is 1d2h3m4s";
+            };
+
             github = {
+              host = lib.mkOption {
+                type = lib.types.str;
+                default = "github.com";
+                description = "Change this when using GitHub Enterprise";
+              };
+
               users = lib.mkOption {
                 type = lib.types.listOf lib.types.str;
                 default = [];
                 description = "List of GitHub user names that are allowed to login";
               };
 
-              org = lib.mkOption {
-                type = lib.types.nullOr lib.types.str;
-                default = null;
-                description = "Organization to check for users";
-              };
-
-              team = lib.mkOption {
-                type = lib.types.nullOr lib.types.str;
-                default = null;
-                description = "Team within the org";
+              teams = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [];
+                description = "list of org/team that are allowed access (e.g. acme/ops)";
               };
 
               tokenFile = lib.mkOption {
@@ -167,18 +205,19 @@
         };
 
         config = lib.mkIf cfg.enable (let
-          inherit (cfg.github) users org team tokenFile;
+          inherit (cfg.github) users teams tokenFile;
           flags = lib.cli.toGNUCommandLine {} {
             dir = cfg.dataDir;
             users = builtins.concatStringsSep "," users;
+            teams = builtins.concatStringsSep "," teams;
             token-file = tokenFile;
-            inherit team org;
+            inherit (cfg) ttl;
           };
         in {
           assertions = [
             {
-              assertion = users != [] || (org != null && team != null);
-              message = "at least one of programs.auth-keys-hub.github.users or programs.auth-keys-hub.github.team and programs.auth-keys-hub.github.org must be set.";
+              assertion = teams == [] || tokenFile != null;
+              message = "programs.auth-keys-hub.github.teams requires tokenFile to be set as well";
             }
           ];
 
