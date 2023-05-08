@@ -103,33 +103,46 @@
           projectRootFile = "flake.nix";
         };
 
-        tullia.tasks = let
-          common = {
-            preset = {
-              nix.enable = true;
-              github.ci = builtins.mapAttrs (_: pkgs.lib.mkDefault) {
-                enable = config.actionRun.facts != {};
-                repository = "input-output-hk/auth-keys-hub";
-                remote = config.preset.github.lib.readRepository "GitHub Push or PR" "";
-                revision = config.preset.github.lib.readRevision "GitHub Push or PR" "";
+        tullia = {
+          tasks = {
+            build = {config, ...}: {
+              preset = {
+                nix.enable = true;
+                github.ci = builtins.mapAttrs (_: pkgs.lib.mkDefault) {
+                  enable = config.actionRun.facts != {};
+                  repository = "input-output-hk/auth-keys-hub";
+                  remote = config.preset.github.lib.readRepository "GitHub Push or PR" "";
+                  revision = config.preset.github.lib.readRevision "GitHub Push or PR" "";
+                };
               };
-            };
 
-            nomad.driver = "exec";
-          };
-        in {
-          build = {config, ...}: {
-            imports = [common];
+              nomad.driver = "exec";
 
-            config = {
               memory = 1024 * 8;
               nomad.resources.cpu = 3000;
               command.text = ''
+                export PATH="$PATH:${pkgs.jq}/bin"
                 for package in $(nix eval .#packages.x86_64-linux --apply __attrNames --json | jq -r '.[]'); do
                   nix build -L ".#packages.x86_64-linux.$package"
                 done
               '';
             };
+          };
+
+          actions."auth-keys-hub/ci" = {
+            task = "build";
+            io = ''
+              let github = {
+                #input: "GitHub Push or PR"
+                #repo: "input-output-hk/auth-keys-hub"
+              }
+
+              #lib.merge
+              #ios: [
+                #lib.io.github_push & github & {#default_branch: true},
+                #lib.io.github_pr   & github,
+              ]
+            '';
           };
         };
       };
