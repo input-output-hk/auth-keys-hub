@@ -33,21 +33,20 @@ def parse_time_span(input)
 end
 
 struct AuthKeysHub
-  property users = [] of String
+  property github_users = [] of String
   property dir = Path.new("/tmp")
   property github_host = "github.com"
-  property teams = [] of String
-  property token : String?
+  property github_teams = [] of String
+  property github_token : String?
   property force = false
   property ttl = Time::Span.new(hours: 1)
-  property keys = {} of String => Array(String)
 
   def file
     dir / "authorized_keys"
   end
 
-  def teams_configured?
-    teams.any? && token
+  def github_teams_configured?
+    github_teams.any? && github_token
   end
 
   def outdated?
@@ -60,18 +59,18 @@ struct AuthKeysHub
     File.delete?(file) if force
     return unless outdated?
 
-    update_teams if teams_configured?
-    update_keys
+    update_github_teams if github_teams_configured?
+    update_github_keys
   end
 
-  def update_teams
-    teams.each { |org_team|
+  def update_github_teams
+    github_teams.each { |org_team|
       org, team = org_team.split("/")
-      update_team(org, team)
+      update_github_team(org, team)
     }
   end
 
-  def update_team(org, team)
+  def update_github_team(org, team)
     params = URI::Params.encode({"per_page" => "100", "page" => "1"})
     uri = URI.new("https", "api.#{github_host}", path: "/orgs/#{org}/teams/#{team}/members", query: params)
 
@@ -81,23 +80,23 @@ struct AuthKeysHub
       request.headers = HTTP::Headers{
         "Accept"               => "application/vnd.github+json",
         "Accept-Encoding"      => "gzip, deflate",
-        "Authorization"        => "bearer #{token}",
+        "Authorization"        => "bearer #{github_token}",
         "Host"                 => uri.host.not_nil!,
         "User-Agent"           => "auth-keys-hub",
         "X-GitHub-Api-Version" => "2022-11-28",
       }
     end
 
-    update_team_page(client, uri)
+    update_github_team_page(client, uri)
   end
 
-  def update_team_page(client, uri)
+  def update_github_team_page(client, uri)
     response = client.get(uri.request_target)
-    users.concat Array(User).from_json(response.body).map(&.login)
+    github_users.concat Array(User).from_json(response.body).map(&.login)
 
     case response.headers["Link"]?
     when /<(?<url>[^>]+)>; rel="next"/
-      update_team_page(client, URI.parse($~.try(&.["url"])))
+      update_github_team_page(client, URI.parse($~.try(&.["url"])))
     end
   rescue ex
     Log.error(exception: ex) do
@@ -109,14 +108,14 @@ struct AuthKeysHub
     end
   end
 
-  def update_keys
-    users.sort!
-    users.uniq!
-    Log.debug { "Updating #{file} file for #{users.join(", ")}" }
+  def update_github_keys
+    github_users.sort!
+    github_users.uniq!
+    Log.debug { "Updating #{file} file for #{github_users.join(", ")}" }
 
     channel = Channel(String?).new
 
-    users.each do |name|
+    github_users.each do |name|
       spawn name: name do
         client = HTTP::Client.new(uri: URI.parse("https://#{github_host}"))
         client.read_timeout = 5.seconds
@@ -130,7 +129,7 @@ struct AuthKeysHub
     end
 
     File.open("#{file}.tmp", "w+") do |fd|
-      users.each do |_name|
+      github_users.each do |_name|
         if (value = channel.receive) && !value.empty?
           fd.puts(value.strip)
         end
@@ -141,18 +140,20 @@ struct AuthKeysHub
   rescue ex
     STDERR.puts(ex)
   end
+
+  def set_github_users(value)
+    self.github_users = value.split(",").map { |s| s.strip }
+  end
 end
 
 akh = AuthKeysHub.new
 
 OptionParser.parse do |parser|
   parser.banner = "Usage: auth-keys-hub [arguments]"
-  parser.on("--users=NAMES", "GitHub user names, comma separated") { |value|
-    akh.users = value.split(",").map { |s| s.strip }.sort.uniq
-  }
+  parser.on("--github-users=NAMES", "GitHub user names, comma separated") { |value| akh.set_github_users(value) }
   parser.on("--github-host=HOST", "GitHub Host (e.g. github.com)") { |value| akh.github_host = value }
-  parser.on("--teams=TEAMS", "GitHub team names, including organization name, comma separated (e.g. acme/ops) ") { |value| akh.teams = value.split(",").map(&.strip) }
-  parser.on("--token-file=PATH", "File containing the GitHub token") { |value| akh.token = File.read(value).strip }
+  parser.on("--github-teams=TEAMS", "GitHub team names, including organization name, comma separated (e.g. acme/ops) ") { |value| akh.github_teams = value.split(",").map(&.strip) }
+  parser.on("--github-token-file=PATH", "File containing the GitHub token") { |value| akh.github_token = File.read(value).strip }
   parser.on("--dir=PATH", "Directory for storing tempoary files") { |value| akh.dir = Path.new(value) }
   parser.on("--ttl=TIMESPAN", "Interval before refresh (e.g. 1d2h3h4s)") { |value| akh.ttl = parse_time_span(value) }
   parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.1"; exit }

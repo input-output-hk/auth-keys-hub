@@ -218,18 +218,19 @@
         };
 
         config = lib.mkIf cfg.enable (let
-          inherit (cfg.github) users teams tokenFile;
+          inherit (cfg.github) teams tokenFile;
           flags = lib.cli.toGNUCommandLine {} {
-            dir = cfg.dataDir;
-            users = builtins.concatStringsSep "," users;
-            teams = builtins.concatStringsSep "," teams;
-            token-file = tokenFile;
             inherit (cfg) ttl;
+            dir = cfg.dataDir;
+            github-host = cfg.github.host;
+            github-users = builtins.concatStringsSep "," cfg.github.users;
+            github-teams = builtins.concatStringsSep "," cfg.github.teams;
+            github-token-file = cfg.github.tokenFile;
           };
         in {
           assertions = [
             {
-              assertion = teams == [] || tokenFile != null;
+              assertion = cfg.github.teams == [] || cfg.github.tokenFile != null;
               message = "programs.auth-keys-hub.github.teams requires tokenFile to be set as well";
             }
           ];
