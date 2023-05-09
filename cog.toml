@@ -1,0 +1,17 @@
+post_bump_hooks = [
+  "git push",
+  "git push origin {{version}}",
+  "cog -q changelog --at {{version}}",
+]
+
+[changelog]
+path = "CHANGELOG.md"
+template = "remote"
+remote = "github.com"
+repository = "input-output-hk"
+owner = "auth-keys-hub"
+authors = [
+  { username = "manveru", signature = "Michael Fellinger" },
+  { username = "blaggacao", signature = "David Arnold" },
+]
+
