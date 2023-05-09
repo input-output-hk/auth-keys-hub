@@ -4,23 +4,6 @@ require "log"
 require "option_parser"
 require "uri"
 
-class User
-  include JSON::Serializable
-
-  @[JSON::Field(key: "login")]
-  property login : String
-end
-
-class Key
-  include JSON::Serializable
-
-  @[JSON::Field(key: "id")]
-  property id : Int64
-
-  @[JSON::Field(key: "key")]
-  property key : String
-end
-
 def parse_time_span(input)
   match = /^((?<d>\d+)d)?((?<h>\d+)h)?((?<m>\d+)m)?((?<s>\d+)s)?$/.match(input)
   raise "invalid timespan" unless match
@@ -33,7 +16,38 @@ def parse_time_span(input)
 end
 
 struct AuthKeysHub
-  property github_users = [] of String
+  alias User = GitHubUser
+
+  struct GitHubUser
+    include JSON::Serializable
+
+    @[JSON::Field(key: "login")]
+    property login : String
+
+    def initialize(@login)
+    end
+
+    def to_s
+      login
+    end
+
+    def <=>(other)
+      login <=> other.login
+    end
+
+    def keys(config) : Array(String)
+      client = HTTP::Client.new(uri: URI.parse("https://#{config.github_host}"))
+      client.read_timeout = 5.seconds
+      response = client.get("/#{login}.keys")
+      if response.status == HTTP::Status::OK
+        (response.body.split("\n") - [""]).map { |line| "#{line} #{login}" }
+      else
+        [] of String
+      end
+    end
+  end
+
+  property users = [] of User
   property dir = Path.new("/tmp")
   property github_host = "github.com"
   property github_teams = [] of String
@@ -60,7 +74,7 @@ struct AuthKeysHub
     return unless outdated?
 
     update_github_teams if github_teams_configured?
-    update_github_keys
+    update_keys
   end
 
   def update_github_teams
@@ -92,7 +106,7 @@ struct AuthKeysHub
 
   def update_github_team_page(client, uri)
     response = client.get(uri.request_target)
-    github_users.concat Array(User).from_json(response.body).map(&.login)
+    users.concat Array(GitHubUser).from_json(response.body)
 
     case response.headers["Link"]?
     when /<(?<url>[^>]+)>; rel="next"/
@@ -108,30 +122,27 @@ struct AuthKeysHub
     end
   end
 
-  def update_github_keys
-    github_users.sort!
-    github_users.uniq!
-    Log.debug { "Updating #{file} file for #{github_users.join(", ")}" }
+  def update_keys
+    users.sort!
+    users.uniq!
+    Log.debug { "Updating #{file} file for #{users.join(", ")}" }
 
-    channel = Channel(String?).new
+    channel = Channel(Array(String)).new
 
-    github_users.each do |name|
-      spawn name: name do
-        client = HTTP::Client.new(uri: URI.parse("https://#{github_host}"))
-        client.read_timeout = 5.seconds
-        response = client.get("/#{name}.keys")
-        if response.status == HTTP::Status::OK
-          channel.send(response.body.gsub(/\n+/, " #{name}\n"))
-        else
-          channel.send(nil)
+    users.each do |user|
+      spawn name: user.to_s do
+        begin
+          channel.send(user.keys(self))
+        rescue ex
+          channel.send([] of String)
         end
       end
     end
 
     File.open("#{file}.tmp", "w+") do |fd|
-      github_users.each do |_name|
-        if (value = channel.receive) && !value.empty?
-          fd.puts(value.strip)
+      users.each do |_name|
+        channel.receive.each do |line|
+          fd.puts(line)
         end
       end
     end
@@ -142,7 +153,7 @@ struct AuthKeysHub
   end
 
   def set_github_users(value)
-    self.github_users = value.split(",").map { |s| s.strip }
+    self.users = value.split(",").map { |s| GitHubUser.new(login: s.strip) }
   end
 end
 

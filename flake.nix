@@ -218,7 +218,6 @@
         };
 
         config = lib.mkIf cfg.enable (let
-          inherit (cfg.github) teams tokenFile;
           flags = lib.cli.toGNUCommandLine {} {
             inherit (cfg) ttl;
             dir = cfg.dataDir;
