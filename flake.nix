@@ -13,7 +13,7 @@
 
   outputs = inputs:
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux"];
+      systems = ["x86_64-linux" "aarch64-darwin"];
 
       imports = [
         inputs.flake-parts.flakeModules.easyOverlay
@@ -122,8 +122,10 @@
               nomad.resources.cpu = 3000;
               command.text = ''
                 export PATH="$PATH:${pkgs.jq}/bin"
+                set -x
                 for package in $(nix eval .#packages.x86_64-linux --apply __attrNames --json | jq -r '.[]'); do
                   nix build -L ".#packages.x86_64-linux.$package"
+                  nix build -L ".#packages.aarch64-darwin.$package"
                 done
               '';
             };
