@@ -37,6 +37,7 @@
             crystal
             crystalline
             treefmt-crystal
+            cocogitto
           ];
 
           shellHook = ''
