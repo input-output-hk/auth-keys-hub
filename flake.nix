@@ -13,7 +13,7 @@
 
   outputs = inputs:
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux"];
+      systems = ["x86_64-linux" "aarch64-darwin"];
 
       imports = [
         inputs.flake-parts.flakeModules.easyOverlay
@@ -121,10 +121,10 @@
               memory = 1024 * 8;
               nomad.resources.cpu = 3000;
               command.text = ''
-                export PATH="$PATH:${pkgs.jq}/bin"
-                for package in $(nix eval .#packages.x86_64-linux --apply __attrNames --json | jq -r '.[]'); do
-                  nix build -L ".#packages.x86_64-linux.$package"
-                done
+                set -x
+                nix build -L ".#packages.x86_64-linux.auth-keys-hub"
+                nix build -L ".#packages.x86_64-linux.auth-keys-hub-static"
+                nix build -L ".#packages.aarch64-darwin.auth-keys-hub"
               '';
             };
           };
