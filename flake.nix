@@ -121,12 +121,10 @@
               memory = 1024 * 8;
               nomad.resources.cpu = 3000;
               command.text = ''
-                export PATH="$PATH:${pkgs.jq}/bin"
                 set -x
-                for package in $(nix eval .#packages.x86_64-linux --apply __attrNames --json | jq -r '.[]'); do
-                  nix build -L ".#packages.x86_64-linux.$package"
-                  nix build -L ".#packages.aarch64-darwin.$package"
-                done
+                nix build -L ".#packages.x86_64-linux.auth-keys-hub"
+                nix build -L ".#packages.x86_64-linux.auth-keys-hub-static"
+                nix build -L ".#packages.aarch64-darwin.auth-keys-hub"
               '';
             };
           };
