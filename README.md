@@ -1,14 +1,16 @@
 # auth-keys-hub
 
 auth-keys-hub is a command-line tool to automatically fetch the authorized keys
-for GitHub users and teams. It's designed to be executed via the
-`AuthorizedKeysCommand` configuration in OpenSSH. It fetches the public keys of
-specified GitHub users or a team within an organization and grants them access.
+for users of [GitHub](https://github.com) and [GitLab](https://gitlab.com).
+It's designed to be executed via the `AuthorizedKeysCommand` configuration in
+OpenSSH which thus grants them access.
 
 ## Features
 
-- Retrieve public keys of individual GitHub users or a team within an organization
-- When only users are configured, no GitHub token is required
+- Retrieve public keys of individual GitHub and GitLab users
+- Retrieve public keys of members of a GitHub team
+- Retrieve public keys of members of a GitLab project or group
+- When only users are configured, no GitHub or GitLab token is required
 - Automatically updates the `authorized_keys` file when it becomes outdated
 - Will still be able to work with stale data in case of a GitHub outage
 - Supports command-line arguments and environment variables for configuration
@@ -23,7 +25,7 @@ specified GitHub users or a team within an organization and grants them access.
 
 * The code in this project has not been audited by any third party yet.
 
-* For the org/team functionality, the GitHub API is queried.
+* For the org/team/project/group functionality, the GitHub or GitLab API is queried.
   While we can obtain up to 100 user names per query, given large enough teams and
   use of the same API key across a lot of machines, this may end up exhausting your quota.
 

@@ -45,11 +45,13 @@
         };
 
         packages = let
-          version = "0.0.1";
+          version = "0.0.2";
           pname = "auth-keys-hub";
           format = "crystal";
           src = inputs.inclusive.lib.inclusive ./. [./src/auth-keys-hub.cr];
         in {
+          default = self'.packages.auth-keys-hub;
+
           auth-keys-hub = final.crystal.buildCrystalPackage {
             inherit pname version format src;
             crystalBinaries.auth-keys-hub = {
@@ -189,6 +191,32 @@
               description = "how often to fetch new keys, format is 1d2h3m4s";
             };
 
+            gitlab = {
+              host = lib.mkOption {
+                type = lib.types.str;
+                default = "gitlab.com";
+                description = "Change this when using self hosted GitLab";
+              };
+
+              users = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [];
+                description = "List of GitLab user names that are allowed to login";
+              };
+
+              groups = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [];
+                description = "List of GitLab groups that are allowed to login";
+              };
+
+              tokenFile = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Read the GitLab token from this file, required when groups are used";
+              };
+            };
+
             github = {
               host = lib.mkOption {
                 type = lib.types.str;
@@ -218,13 +246,21 @@
         };
 
         config = lib.mkIf cfg.enable (let
+          join = builtins.concatStringsSep ",";
+
           flags = lib.cli.toGNUCommandLine {} {
             inherit (cfg) ttl;
             dir = cfg.dataDir;
+
             github-host = cfg.github.host;
-            github-users = builtins.concatStringsSep "," cfg.github.users;
-            github-teams = builtins.concatStringsSep "," cfg.github.teams;
+            github-users = join cfg.github.users;
+            github-teams = join cfg.github.teams;
             github-token-file = cfg.github.tokenFile;
+
+            gitlab-host = cfg.gitlab.host;
+            gitlab-users = join cfg.gitlab.users;
+            gitlab-groups = join cfg.gitlab.groups;
+            gitlab-token-file = cfg.gitlab.tokenFile;
           };
         in {
           assertions = [

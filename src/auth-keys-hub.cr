@@ -3,6 +3,7 @@ require "json"
 require "log"
 require "option_parser"
 require "uri"
+require "time"
 
 def parse_time_span(input)
   match = /^((?<d>\d+)d)?((?<h>\d+)h)?((?<m>\d+)m)?((?<s>\d+)s)?$/.match(input)
@@ -16,7 +17,52 @@ def parse_time_span(input)
 end
 
 struct AuthKeysHub
-  alias User = GitHubUser
+  struct GitlabUserKey
+    include JSON::Serializable
+
+    property title : String
+    property key : String
+    property usage_type : String
+    property expires_at : Time?
+  end
+
+  struct GitlabUser
+    include JSON::Serializable
+
+    @[JSON::Field(key: "username")]
+    property username : String
+
+    def initialize(@username)
+    end
+
+    def to_s
+      username
+    end
+
+    def <=>(other)
+      to_s <=> other.to_s
+    end
+
+    # fetch keys from gitlab
+    def keys(config) : Array(String)
+      client = HTTP::Client.new(uri: URI.parse("https://#{config.gitlab_host}"))
+      client.read_timeout = 5.seconds
+      response = client.get("/api/v4/users/#{username}/keys")
+      if response.status == HTTP::Status::OK
+        Array(GitlabUserKey).from_json(response.body).select{|key|
+          if expires_at = key.expires_at
+            expires_at > Time.utc
+          else
+            true
+          end
+        }.compact.map{|key|
+          "#{key.key} #{key.title}"
+        }
+      else
+        [] of String
+      end
+    end
+  end
 
   struct GitHubUser
     include JSON::Serializable
@@ -32,7 +78,7 @@ struct AuthKeysHub
     end
 
     def <=>(other)
-      login <=> other.login
+      to_s <=> other.to_s
     end
 
     def keys(config) : Array(String)
@@ -47,11 +93,21 @@ struct AuthKeysHub
     end
   end
 
+  alias User = GitHubUser | GitlabUser
+
   property users = [] of User
   property dir = Path.new("/tmp")
+
+  property github_users = [] of String
   property github_host = "github.com"
   property github_teams = [] of String
   property github_token : String?
+
+  property gitlab_host = "gitlab.com"
+  property gitlab_users = [] of String
+  property gitlab_token : String?
+  property gitlab_groups = [] of String
+
   property force = false
   property ttl = Time::Span.new(hours: 1)
 
@@ -61,6 +117,10 @@ struct AuthKeysHub
 
   def github_teams_configured?
     github_teams.any? && github_token
+  end
+
+  def gitlab_groups_configured?
+    gitlab_groups.any? && gitlab_token
   end
 
   def outdated?
@@ -74,6 +134,7 @@ struct AuthKeysHub
     return unless outdated?
 
     update_github_teams if github_teams_configured?
+    update_gitlab_groups if gitlab_groups_configured?
     update_keys
   end
 
@@ -122,6 +183,41 @@ struct AuthKeysHub
     end
   end
 
+  def update_gitlab_groups
+    gitlab_groups.each { |group| update_gitlab_group(group) }
+  end
+
+  def update_gitlab_group(group)
+    uri = URI.new("https", gitlab_host, path: "/api/v4/groups/#{group}/members/all")
+
+    client = HTTP::Client.new(uri: uri)
+    client.read_timeout = 5.seconds
+    client.before_request do |request|
+      request.headers["PRIVATE-TOKEN"] = gitlab_token.not_nil!
+    end
+
+    update_gitlab_group_page(client, uri)
+  end
+
+  def update_gitlab_group_page(client, uri, page = 1)
+    params = URI::Params.encode({"per_page" => "100", "page" => page.to_s, "state" => "active"})
+    uri.query = params
+    response = client.get(uri.request_target)
+    users.concat Array(GitlabUser).from_json(response.body)
+
+    if (next_page = response.headers["x-next-page"]?) && next_page != ""
+      update_gitlab_group_page(client, uri, next_page.to_i)
+    end
+  rescue ex
+    Log.error(exception: ex) do
+      if response
+        response.inspect
+      else
+        "Failed to fetch #{uri}"
+      end
+    end
+  end
+
   def update_keys
     users.sort!
     users.uniq!
@@ -153,7 +249,11 @@ struct AuthKeysHub
   end
 
   def set_github_users(value)
-    self.users = value.split(",").map { |s| GitHubUser.new(login: s.strip) }
+    self.users += value.split(",").map { |s| GitHubUser.new(s.strip) }
+  end
+
+  def set_gitlab_users(value)
+    self.users += value.split(",").map { |s| GitlabUser.new(s.strip) }
   end
 end
 
@@ -161,13 +261,20 @@ akh = AuthKeysHub.new
 
 OptionParser.parse do |parser|
   parser.banner = "Usage: auth-keys-hub [arguments]"
+
   parser.on("--github-users=NAMES", "GitHub user names, comma separated") { |value| akh.set_github_users(value) }
   parser.on("--github-host=HOST", "GitHub Host (e.g. github.com)") { |value| akh.github_host = value }
   parser.on("--github-teams=TEAMS", "GitHub team names, including organization name, comma separated (e.g. acme/ops) ") { |value| akh.github_teams = value.split(",").map(&.strip) }
   parser.on("--github-token-file=PATH", "File containing the GitHub token") { |value| akh.github_token = File.read(value).strip }
+
+  parser.on("--gitlab-host=HOST", "GitLab Host (e.g. gitlab.com)") { |value| akh.gitlab_host = value }
+  parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.set_gitlab_users(value) }
+  parser.on("--gitlab-token-file=PATH", "File containing the GitLab token") { |value| akh.gitlab_token = File.read(value).strip }
+  parser.on("--gitlab-groups=TEAMS", "GitLab group or project names, comma separated") { |value| akh.gitlab_groups = value.split(",").map(&.strip) }
+
   parser.on("--dir=PATH", "Directory for storing tempoary files") { |value| akh.dir = Path.new(value) }
   parser.on("--ttl=TIMESPAN", "Interval before refresh (e.g. 1d2h3h4s)") { |value| akh.ttl = parse_time_span(value) }
-  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.1"; exit }
+  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.2"; exit }
   parser.on("--force", "Delete authorized_keys first") { akh.force = true }
   parser.on("--debug", "Some logging useful for debugging") { Log.setup(Log::Severity::Debug) }
   parser.on("-h", "--help", "Show this help") { puts parser; exit }
