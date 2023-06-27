@@ -8,7 +8,6 @@
     statix.url = "github:nerdypepper/statix";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     crystal.url = "github:manveru/crystal-flake";
-    tullia.url = "github:input-output-hk/tullia";
   };
 
   outputs = inputs:
@@ -18,7 +17,6 @@
       imports = [
         inputs.flake-parts.flakeModules.easyOverlay
         inputs.treefmt-nix.flakeModule
-        inputs.tullia.flakePartsModules.default
       ];
 
       perSystem = {
@@ -95,49 +93,6 @@
             options = [];
           };
           projectRootFile = "flake.nix";
-        };
-
-        tullia = {
-          tasks = {
-            build = {config, ...}: {
-              preset = {
-                nix.enable = true;
-                github.ci = builtins.mapAttrs (_: pkgs.lib.mkDefault) {
-                  enable = config.actionRun.facts != {};
-                  repository = "input-output-hk/auth-keys-hub";
-                  remote = config.preset.github.lib.readRepository "GitHub Push or PR" "";
-                  revision = config.preset.github.lib.readRevision "GitHub Push or PR" "";
-                };
-              };
-
-              nomad.driver = "exec";
-
-              memory = 1024 * 8;
-              nomad.resources.cpu = 3000;
-              command.text = ''
-                set -x
-                nix build -L ".#packages.x86_64-linux.auth-keys-hub"
-                nix build -L ".#packages.x86_64-linux.auth-keys-hub-static"
-                nix build -L ".#packages.aarch64-darwin.auth-keys-hub"
-              '';
-            };
-          };
-
-          actions."auth-keys-hub/ci" = {
-            task = "build";
-            io = ''
-              let github = {
-                #input: "GitHub Push or PR"
-                #repo: "input-output-hk/auth-keys-hub"
-              }
-
-              #lib.merge
-              #ios: [
-                #lib.io.github_push & github & {#default_branch: true},
-                #lib.io.github_pr   & github,
-              ]
-            '';
-          };
         };
       };
 
