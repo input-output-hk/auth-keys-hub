@@ -86,14 +86,6 @@
           inherit (inputs'.crystal.packages) crystal crystalline treefmt-crystal;
         };
 
-        formatter = pkgs.writeShellApplication {
-          name = "treefmt";
-          runtimeInputs = [config.treefmt.package];
-          text = ''
-            exec treefmt
-          '';
-        };
-
         treefmt = {
           programs.alejandra.enable = true;
           settings.formatter.crystal = {
