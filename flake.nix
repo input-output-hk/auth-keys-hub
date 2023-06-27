@@ -15,27 +15,27 @@
       systems = ["x86_64-linux" "aarch64-darwin"];
 
       imports = [
-        inputs.flake-parts.flakeModules.easyOverlay
         inputs.treefmt-nix.flakeModule
       ];
 
       perSystem = {
-        pkgs,
-        final,
         config,
-        self',
+        pkgs,
+        lib,
         inputs',
         ...
       }: {
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = with final; [
-            config.treefmt.package
-            statix
-            watchexec
-            crystal
-            crystalline
-            treefmt-crystal
-          ];
+          packages =
+            (with inputs'; [
+              crystal.packages.crystal
+              crystal.packages.crystalline
+              crystal.packages.treefmt-crystal
+              statix.packages.statix
+            ])
+            ++ (with pkgs; [
+              watchexec
+            ]);
 
           shellHook = ''
             ln -sf ${config.treefmt.build.configFile} treefmt.toml
@@ -46,11 +46,11 @@
           version = "0.0.2";
           pname = "auth-keys-hub";
           format = "crystal";
-          src = inputs.inclusive.lib.inclusive ./. [./src/auth-keys-hub.cr];
+          src = inputs.inclusive.lib.inclusive ./. [src/auth-keys-hub.cr];
         in {
-          default = self'.packages.auth-keys-hub;
+          default = config.packages.auth-keys-hub;
 
-          auth-keys-hub = final.crystal.buildCrystalPackage {
+          auth-keys-hub = inputs'.crystal.packages.crystal.buildCrystalPackage {
             inherit pname version format src;
             crystalBinaries.auth-keys-hub = {
               src = "src/auth-keys-hub.cr";
@@ -58,11 +58,11 @@
             };
           };
 
-          auth-keys-hub-static = final.crystal.buildCrystalPackage {
+          auth-keys-hub-static = inputs'.crystal.packages.crystal.buildCrystalPackage {
             inherit pname version format src;
             doCheck = false;
 
-            CRYSTAL_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with final.pkgsStatic; [
+            CRYSTAL_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs.pkgsStatic; [
               boehmgc
               libevent
               musl
@@ -78,25 +78,19 @@
           };
         };
 
-        overlayAttrs = {
-          inherit (inputs'.statix.packages) statix;
-          inherit (self'.packages) auth-keys-hub;
-          inherit (inputs'.crystal.packages) crystal crystalline treefmt-crystal;
-        };
-
         treefmt = {
           programs.alejandra.enable = true;
           settings.formatter.crystal = {
             includes = ["*.cr"];
             excludes = [];
-            command = "treefmt-crystal";
+            command = lib.getExe inputs'.crystal.packages.treefmt-crystal;
             options = [];
           };
           projectRootFile = "flake.nix";
         };
       };
 
-      flake = { config, ... }: {
+      flake = {config, ...}: {
         hydraJobs = builtins.mapAttrs (_: v: removeAttrs v ["default"]) config.packages;
 
         nixosModules.auth-keys-hub = {
