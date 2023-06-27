@@ -49,13 +49,13 @@ struct AuthKeysHub
       client.read_timeout = 5.seconds
       response = client.get("/api/v4/users/#{username}/keys")
       if response.status == HTTP::Status::OK
-        Array(GitlabUserKey).from_json(response.body).select{|key|
+        Array(GitlabUserKey).from_json(response.body).select { |key|
           if expires_at = key.expires_at
             expires_at > Time.utc
           else
             true
           end
-        }.compact.map{|key|
+        }.compact.map { |key|
           "#{key.key} #{key.title}"
         }
       else
