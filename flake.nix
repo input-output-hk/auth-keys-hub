@@ -91,7 +91,21 @@
       };
 
       flake = {config, ...}: {
-        hydraJobs = builtins.mapAttrs (_: v: removeAttrs v ["default"]) config.packages;
+        hydraJobs =
+          builtins.mapAttrs
+          (
+            system: v: let
+              jobs = removeAttrs v ["default"];
+            in
+              jobs
+              // {
+                required = inputs.nixpkgs.legacyPackages.${system}.releaseTools.aggregate {
+                  name = "required";
+                  constituents = builtins.attrValues jobs;
+                };
+              }
+          )
+          config.packages;
 
         nixosModules.auth-keys-hub = {
           config,
