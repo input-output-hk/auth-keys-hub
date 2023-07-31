@@ -23,6 +23,7 @@
         pkgs,
         lib,
         inputs',
+        system,
         ...
       }: {
         devShells.default = pkgs.mkShell {
@@ -47,36 +48,37 @@
           pname = "auth-keys-hub";
           format = "crystal";
           src = inputs.inclusive.lib.inclusive ./. [src/auth-keys-hub.cr];
-        in {
-          default = config.packages.auth-keys-hub;
+        in ({
+            default = config.packages.auth-keys-hub;
 
-          auth-keys-hub = inputs'.crystal.packages.crystal.buildCrystalPackage {
-            inherit pname version format src;
-            crystalBinaries.auth-keys-hub = {
-              src = "src/auth-keys-hub.cr";
-              options = ["--release"];
+            auth-keys-hub = inputs'.crystal.packages.crystal.buildCrystalPackage {
+              inherit pname version format src;
+              crystalBinaries.auth-keys-hub = {
+                src = "src/auth-keys-hub.cr";
+                options = ["--release"];
+              };
             };
-          };
+          }
+          // (lib.optionalAttrs (system != "aarch64-darwin") {
+            auth-keys-hub-static = inputs'.crystal.packages.crystal.buildCrystalPackage {
+              inherit pname version format src;
+              doCheck = false;
 
-          auth-keys-hub-static = inputs'.crystal.packages.crystal.buildCrystalPackage {
-            inherit pname version format src;
-            doCheck = false;
+              CRYSTAL_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs.pkgsStatic; [
+                boehmgc
+                libevent
+                musl
+                openssl
+                pcre2
+                zlib
+              ]);
 
-            CRYSTAL_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs.pkgsStatic; [
-              boehmgc
-              libevent
-              musl
-              openssl
-              pcre2
-              zlib
-            ]);
-
-            crystalBinaries.auth-keys-hub = {
-              src = "src/auth-keys-hub.cr";
-              options = ["--release" "--no-debug" "--static"];
+              crystalBinaries.auth-keys-hub = {
+                src = "src/auth-keys-hub.cr";
+                options = ["--release" "--no-debug" "--static"];
+              };
             };
-          };
-        };
+          }));
 
         treefmt = {
           programs.alejandra.enable = true;
