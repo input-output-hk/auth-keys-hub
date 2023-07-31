@@ -241,6 +241,11 @@ struct AuthKeysHub
           fd.puts(line)
         end
       end
+
+      fd.fsync
+      if fd.info.size <= 0
+        raise "Tried writing an empty authorized_keys, aborting"
+      end
     end
 
     File.rename("#{file}.tmp", file)
