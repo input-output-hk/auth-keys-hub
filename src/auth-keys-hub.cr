@@ -24,6 +24,14 @@ struct AuthKeysHub
     property key : String
     property usage_type : String
     property expires_at : Time?
+
+    def viable?
+      if expires_at = self.expires_at
+        expires_at > Time.utc
+      else
+        true
+      end
+    end
   end
 
   struct GitlabUser
@@ -49,13 +57,7 @@ struct AuthKeysHub
       client.read_timeout = 5.seconds
       response = client.get("/api/v4/users/#{username}/keys")
       if response.status == HTTP::Status::OK
-        Array(GitlabUserKey).from_json(response.body).select { |key|
-          if expires_at = key.expires_at
-            expires_at > Time.utc
-          else
-            true
-          end
-        }.compact.map { |key|
+        Array(GitlabUserKey).from_json(response.body).select(&.viable?).compact.map { |key|
           "#{key.key} #{key.title}"
         }
       else
