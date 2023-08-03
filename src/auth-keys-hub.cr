@@ -4,6 +4,7 @@ require "log"
 require "option_parser"
 require "uri"
 require "time"
+require "base64"
 
 def parse_time_span(input)
   match = /^((?<d>\d+)d)?((?<h>\d+)h)?((?<m>\d+)m)?((?<s>\d+)s)?$/.match(input)
@@ -89,6 +90,43 @@ struct AuthKeysHub
         (response.body.split("\n") - [""]).map { |line| "#{line} #{login}" }
       else
         [] of String
+      end
+    end
+  end
+
+  struct SSHPublicKey
+    property type : String
+    property length : Int32
+
+    def initialize(@type, @length) end
+
+    def self.parse(key_bytes) : SSHPublicKey?
+      dec = IO::Memory.new(Base64.decode_string(key_bytes))
+
+      type_buf = Bytes.new(dec.read_bytes(Int32, IO::ByteFormat::BigEndian))
+      dec.read(type_buf)
+      type = String.new(type_buf)
+
+      case type
+      when "ssh-rsa", "ecdsa-sha2-nistp256", "sk-ecdsa-sha2-nistp256@openssh.com"
+        dec.seek(dec.read_bytes(Int32, IO::ByteFormat::BigEndian), IO::Seek::Current)
+        length = (dec.read_bytes(Int32, IO::ByteFormat::BigEndian) - 1) * 8
+        SSHPublicKey.new(type, length)
+      when "ssh-ed25519", "sk-ssh-ed25519@openssh.com"
+        length = dec.read_bytes(Int32, IO::ByteFormat::BigEndian) * 8
+        SSHPublicKey.new(type, length)
+      when "ssh-dss"
+        length = (dec.read_bytes(Int32, IO::ByteFormat::BigEndian) - 1) * 8
+        SSHPublicKey.new(type, length)
+      end
+    end
+
+    def allowed?
+      case type
+      when "ssh-rsa"
+        length >= 2048
+      when "ssh-ed25519", "sk-ssh-ed25519@openssh.com"
+        length >= 256
       end
     end
   end
