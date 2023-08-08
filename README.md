@@ -18,19 +18,24 @@ OpenSSH which thus grants them access.
 
 ## Warning
 
-* Please note that this will grant access to ANY user on the machine, as long as that user exists!
-  That means there is no additional verification needed to become root!
-  While we may provide a way to explicitly map machine users to github users in the future,
-  this hasn't been a requirement for our use-case and thus not implemented.
+* If you do not specify local users in your configuration, access will be
+  granted to any requested user including root!
 
 * The code in this project has not been audited by any third party yet.
 
-* For the org/team/project/group functionality, the GitHub or GitLab API is queried.
-  While we can obtain up to 100 user names per query, given large enough teams and
-  use of the same API key across a lot of machines, this may end up exhausting your quota.
+* For the org/team/project/group functionality, the GitHub or GitLab API is
+  queried. While we can obtain up to 100 user names per query, given large
+  enough teams and use of the same API key across a lot of machines, this may
+  end up exhausting your quota.
 
-* Refreshes happen every hour by default, but can be configured using the `--ttl` and `--force` flags.
-  Depending on that, there may be some time between removing a user from a team and it actually taking effect.
+* Refreshes happen every hour by default, but can be configured using the
+  `--ttl` and `--force` flags. Depending on that, there may be some time
+  between removing a user from a team and it actually taking effect. However,
+  this can be used to alleviate quota issues.
+
+* Authorized keys are written to /run/auth-keys-hub by default. This leads to
+  them being deleted on reboot on most setups.
+  If that is an issue for you, change the location.
 
 ## Building
 
@@ -46,7 +51,9 @@ supporting any other platforms.
 
 A production version can be built with:
 
-    crystal build --release ./src/auth-keys-hub.cr
+```sh
+crystal build --release ./src/auth-keys-hub.cr
+```
 
 Please note that this will produce a dynamically linked executable, and thus has runtime dependencies.
 
@@ -54,11 +61,15 @@ Please note that this will produce a dynamically linked executable, and thus has
 
 Build the dynamically linked version:
 
-    nix build .#auth-keys-hub
+```sh
+nix build .#auth-keys-hub
+```
 
 It's also easy to build a statically linked version for lightweight deployment with musl:
 
-    nix build .#auth-keys-hub-static
+```sh
+nix build .#auth-keys-hub-static
+```
 
 ## Usage
 
@@ -71,23 +82,28 @@ Add this repo to your flake inputs:
 Then import the module into your configuration and set your desired values.
 Please read the relevant code in flake.nix to see the full list of supported options.
 
-For example, allow the GitHub user `alice` to log into the machine,
-and also any user in the `bobs` team of the `acme` organization:
+For example:
 
-    {
-      imports = [
-        inputs.auth-keys-hub.nixosModules.auth-keys-hub
-      ];
+* The GitHub user `alice` may log in as the `developer` SSH user.
+* The GitHub users of the `acme` organizations `admins` team may log in as any SSH user.
+* The GitHub users of the `acme` organizations `developers` team may log in as the `developer` SSH user.
 
-      programs.auth-keys-hub = {
-        enable = true;
-        github = {
-          users = ["alice"];
-          teams = ["acme/bobs"];  
-          tokenFile = ./tokens;
-        }
-      };
+```nix
+{
+  imports = [
+    inputs.auth-keys-hub.nixosModules.auth-keys-hub
+  ];
+
+  programs.auth-keys-hub = {
+    enable = true;
+    github = {
+      users = ["alice:developer"];
+      teams = ["acme/admins" "acme/developers:developer"];  
+      tokenFile = ./tokens;
     }
+  };
+}
+```
 
 For managing the `tokenFile` we recommend solutions like
 [sops-nix](https://github.com/Mic92/sops-nix) or
@@ -107,20 +123,24 @@ sections of the `sshd_config(5)` manpage. In particular:
 
 Add the following line to your `/etc/ssh/sshd_config` file:
 
-    AuthorizedKeysCommand /path/to/auth-keys-hub --users <your_github_username>
+    AuthorizedKeysCommand /path/to/auth-keys-hub --github-users <your_github_username>
     AuthorizedKeysCommandUser <username>
 
 Replace `/path/to/auth-keys-hub` with the path to the
 `auth-keys-hub` script, and `<username>` with the user that will
 execute the command. Then, restart the SSH service:
 
-    sudo systemctl restart sshd
+```sh
+sudo systemctl restart sshd
+```
 
 2. Run the `auth-keys-hub` script with the desired options:
 
 For a list of available arguments:
 
-    auth-keys-hub --help
+```sh
+auth-keys-hub --help
+```
 
 ## License
 

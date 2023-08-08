@@ -52,17 +52,14 @@ struct AuthKeysHub
     end
 
     # fetch keys from gitlab
-    def keys(config) : Array(String)
+    def keys(config, channel)
       client = HTTP::Client.new(uri: URI.parse("https://#{config.gitlab_host}"))
       client.read_timeout = 5.seconds
       response = client.get("/api/v4/users/#{username}/keys")
-      if response.status == HTTP::Status::OK
-        Array(GitlabUserKey).from_json(response.body).select(&.viable?).compact.map { |key|
-          "#{key.key} #{key.title}"
-        }
-      else
-        [] of String
-      end
+      return unless response.status == HTTP::Status::OK
+      Array(GitlabUserKey).from_json(response.body).select(&.viable?).compact.map { |key|
+        "#{key.key} #{key.title}"
+      }
     end
   end
 
@@ -83,25 +80,23 @@ struct AuthKeysHub
       to_s <=> other.to_s
     end
 
-    def keys(config) : Array(String)
+    def keys(config, channel)
       client = HTTP::Client.new(uri: URI.parse("https://#{config.github_host}"))
       client.read_timeout = 5.seconds
       response = client.get("/#{login}.keys")
-      if response.status == HTTP::Status::OK
-        (response.body.split("\n") - [""]).map { |line| "#{line} #{login}" }
-      else
-        [] of String
-      end
+      return unless response.status == HTTP::Status::OK
+      (response.body.split("\n") - [""]).map { |line| "#{line} #{login}" }
     end
   end
 
   alias User = GitHubUser | GitlabUser
 
+  property login_user : String?
   property users = [] of User
   property dir = Path.new("/tmp")
 
-  property github_users = [] of String
   property github_host = "github.com"
+  property github_users = [] of String
   property github_teams = [] of String
   property github_token : String?
 
@@ -114,7 +109,11 @@ struct AuthKeysHub
   property ttl = Time::Span.new(hours: 1)
 
   def file
-    dir / "authorized_keys"
+    if login_user
+      dir / "authorized_keys_#{login_user}"
+    else
+      dir / "authorized_keys"
+    end
   end
 
   def github_teams_configured?
@@ -123,6 +122,10 @@ struct AuthKeysHub
 
   def gitlab_groups_configured?
     gitlab_groups.any? && gitlab_token
+  end
+
+  def allowed_for_user?(name)
+    login_user ? name == login_user : true
   end
 
   def outdated?
@@ -135,15 +138,36 @@ struct AuthKeysHub
     File.delete?(file) if force
     return unless outdated?
 
+    update_users(github_users, GitHubUser)
     update_github_teams if github_teams_configured?
+
+    update_users(gitlab_users, GitlabUser)
     update_gitlab_groups if gitlab_groups_configured?
+
     update_keys
+  end
+
+  def update_users(list, klass)
+    self.users += list.map { |s|
+      parts = s.strip.split(":")
+      case parts.size
+      when 1
+        klass.new(parts[0])
+      when 2
+        klass.new(parts[0]) if allowed_for_user?(parts[1])
+      end
+    }.compact
   end
 
   def update_github_teams
     github_teams.each { |org_team|
       org, team = org_team.split("/")
-      update_github_team(org, team)
+      parts = team.split(":")
+      if parts.size == 2
+        update_github_team(org, parts[0]) if allowed_for_user?(parts[1])
+      else
+        update_github_team(org, team)
+      end
     }
   end
 
@@ -186,7 +210,14 @@ struct AuthKeysHub
   end
 
   def update_gitlab_groups
-    gitlab_groups.each { |group| update_gitlab_group(group) }
+    gitlab_groups.each { |group|
+      parts = group.split(":")
+      if parts.size == 2
+        update_gitlab_group(parts[0]) if allowed_for_user?(parts[1])
+      else
+        update_gitlab_group(group)
+      end
+    }
   end
 
   def update_gitlab_group(group)
@@ -220,47 +251,64 @@ struct AuthKeysHub
     end
   end
 
+  def parallel_keys(channel, user)
+    result = user.keys(self, channel)
+  rescue ex
+    Log.error(exception: ex) { "Failed to fetch key for #{user}" }
+  ensure
+    if result
+      channel.send(result)
+    elsif ex
+      channel.send(ex)
+    end
+  end
+
   def update_keys
     users.sort!
     users.uniq!
-    Log.debug { "Updating #{file} file for #{users.join(", ")}" }
 
-    channel = Channel(Array(String)).new
+    if users.empty?
+      Log.debug { "No users matching this login name" }
+      File.delete(file)
+      return
+    end
+
+    Log.debug { "Updating #{file} file for #{users.inspect}" }
+
+    channel = Channel(Array(String) | Exception).new
 
     users.each do |user|
-      spawn name: user.to_s do
-        begin
-          channel.send(user.keys(self))
-        rescue ex
-          channel.send([] of String)
+      spawn parallel_keys(channel, user), name: user.inspect
+    end
+
+    success = 0
+
+    File.open("#{file}.tmp", "w+") do |fd|
+      users.each do |user|
+        case recv = channel.receive
+        in Array(String)
+          recv.each { |line|
+            success += 1
+            fd.puts(line)
+          }
+        in Exception
+          Log.error(exception: recv) { "Updating keys for #{user}" }
         end
       end
     end
 
-    File.open("#{file}.tmp", "w+") do |fd|
-      users.each do |_name|
-        channel.receive.each do |line|
-          fd.puts(line)
-        end
-      end
-
-      fd.fsync
-      if fd.info.size <= 0
-        raise "Tried writing an empty authorized_keys, aborting"
-      end
+    if success == 0
+      Log.warn { "No user keys found, will not update." }
+      return
     end
 
     File.rename("#{file}.tmp", file)
   rescue ex
-    STDERR.puts(ex)
+    Log.error(exception: ex) { "Updating keys" }
   end
 
-  def set_github_users(value)
-    self.users += value.split(",").map { |s| GitHubUser.new(s.strip) }
-  end
-
-  def set_gitlab_users(value)
-    self.users += value.split(",").map { |s| GitlabUser.new(s.strip) }
+  def output
+    puts File.read(file) if File.file?(file)
   end
 end
 
@@ -269,22 +317,25 @@ akh = AuthKeysHub.new
 OptionParser.parse do |parser|
   parser.banner = "Usage: auth-keys-hub [arguments]"
 
-  parser.on("--github-users=NAMES", "GitHub user names, comma separated") { |value| akh.set_github_users(value) }
+  parser.on("--github-users=NAMES", "GitHub user names, comma separated") { |value| akh.github_users = value.split(",") }
   parser.on("--github-host=HOST", "GitHub Host (e.g. github.com)") { |value| akh.github_host = value }
   parser.on("--github-teams=TEAMS", "GitHub team names, including organization name, comma separated (e.g. acme/ops) ") { |value| akh.github_teams = value.split(",").map(&.strip) }
   parser.on("--github-token-file=PATH", "File containing the GitHub token") { |value| akh.github_token = File.read(value).strip }
 
   parser.on("--gitlab-host=HOST", "GitLab Host (e.g. gitlab.com)") { |value| akh.gitlab_host = value }
-  parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.set_gitlab_users(value) }
+  parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.gitlab_users = value.split(",") }
   parser.on("--gitlab-token-file=PATH", "File containing the GitLab token") { |value| akh.gitlab_token = File.read(value).strip }
   parser.on("--gitlab-groups=TEAMS", "GitLab group or project names, comma separated") { |value| akh.gitlab_groups = value.split(",").map(&.strip) }
 
+  parser.on("--user=LOGINNAME", "User requested by SSH connection") { |value| akh.login_user = value }
   parser.on("--dir=PATH", "Directory for storing tempoary files") { |value| akh.dir = Path.new(value) }
   parser.on("--ttl=TIMESPAN", "Interval before refresh (e.g. 1d2h3h4s)") { |value| akh.ttl = parse_time_span(value) }
-  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.2"; exit }
-  parser.on("--force", "Delete authorized_keys first") { akh.force = true }
+
+  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.3"; exit }
+  parser.on("--force", "Delete cached files first") { akh.force = true }
   parser.on("--debug", "Some logging useful for debugging") { Log.setup(Log::Severity::Debug) }
   parser.on("-h", "--help", "Show this help") { puts parser; exit }
+
   parser.invalid_option do |flag|
     STDERR.puts "ERROR: #{flag} is not a valid option."
     STDERR.puts parser
@@ -293,14 +344,14 @@ OptionParser.parse do |parser|
 end
 
 Log.setup_from_env(
-  default_level: :error,
+  default_level: :debug,
   backend: Log::IOBackend.new(STDERR),
 )
 
 begin
   akh.update
 rescue ex
-  Log.error(exception: ex) { "Failed to update authorized_keys" }
+  Log.error(exception: ex) { "Failed to update #{akh.file}" }
 end
 
-puts File.read(akh.file)
+akh.output

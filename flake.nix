@@ -44,7 +44,7 @@
         };
 
         packages = let
-          version = "0.0.2";
+          version = "0.0.3";
           pname = "auth-keys-hub";
           format = "crystal";
           src = inputs.inclusive.lib.inclusive ./. [src/auth-keys-hub.cr];
@@ -206,7 +206,10 @@
           };
 
           config = lib.mkIf cfg.enable (let
-            join = builtins.concatStringsSep ",";
+            join = list:
+              if list == []
+              then null
+              else builtins.concatStringsSep "," list;
 
             flags = lib.cli.toGNUCommandLine {} {
               inherit (cfg) ttl;
@@ -244,12 +247,12 @@
               mode = "0755";
               text = ''
                 #!${pkgs.bash}/bin/bash
-                exec ${cfg.package}/bin/auth-keys-hub ${lib.escapeShellArgs flags}
+                exec ${cfg.package}/bin/auth-keys-hub ${lib.escapeShellArgs flags} "$@"
               '';
             };
 
             services.openssh = {
-              authorizedKeysCommand = "/etc/ssh/auth-keys-hub";
+              authorizedKeysCommand = "/etc/ssh/auth-keys-hub --user %u";
               authorizedKeysCommandUser = cfg.user;
             };
           });
