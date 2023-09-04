@@ -5,9 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     inclusive.url = "github:input-output-hk/nix-inclusive";
-    statix.url = "github:nerdypepper/statix";
     treefmt-nix.url = "github:numtide/treefmt-nix";
-    crystal.url = "github:manveru/crystal-flake";
   };
 
   outputs = inputs:
@@ -27,66 +25,47 @@
         ...
       }: {
         devShells.default = pkgs.mkShell {
-          packages =
-            (with inputs'; [
-              crystal.packages.crystal
-              crystal.packages.crystalline
-              crystal.packages.treefmt-crystal
-              statix.packages.statix
-            ])
-            ++ (with pkgs; [
-              watchexec
-            ]);
+          packages = with pkgs; [
+            crystal
+            crystalline
+            watchexec
+            statix
+          ];
 
           shellHook = ''
             ln -sf ${config.treefmt.build.configFile} treefmt.toml
           '';
         };
 
-        packages = let
-          version = "0.0.3";
-          pname = "auth-keys-hub";
-          format = "crystal";
-          src = inputs.inclusive.lib.inclusive ./. [src/auth-keys-hub.cr];
-        in ({
-            default = config.packages.auth-keys-hub;
+        packages = {
+          default = config.packages.auth-keys-hub;
 
-            auth-keys-hub = inputs'.crystal.packages.crystal.buildCrystalPackage {
-              inherit pname version format src;
-              crystalBinaries.auth-keys-hub = {
-                src = "src/auth-keys-hub.cr";
-                options = ["--release"];
-              };
+          auth-keys-hub = pkgs.crystal.buildCrystalPackage {
+            version = "0.0.3";
+            pname = "auth-keys-hub";
+            format = "crystal";
+            src = inputs.inclusive.lib.inclusive ./. [src/auth-keys-hub.cr];
+
+            nativeBuildInputs = [
+              pkgs.pkg-config
+            ];
+
+            buildInputs = [pkgs.openssl];
+
+            crystalBinaries.auth-keys-hub = {
+              src = "src/auth-keys-hub.cr";
+              options = ["--release"];
             };
-          }
-          // (lib.optionalAttrs (system != "aarch64-darwin") {
-            auth-keys-hub-static = inputs'.crystal.packages.crystal.buildCrystalPackage {
-              inherit pname version format src;
-              doCheck = false;
-
-              CRYSTAL_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs.pkgsStatic; [
-                boehmgc
-                libevent
-                musl
-                openssl
-                pcre2
-                zlib
-              ]);
-
-              crystalBinaries.auth-keys-hub = {
-                src = "src/auth-keys-hub.cr";
-                options = ["--release" "--no-debug" "--static"];
-              };
-            };
-          }));
+          };
+        };
 
         treefmt = {
           programs.alejandra.enable = true;
           settings.formatter.crystal = {
             includes = ["*.cr"];
             excludes = [];
-            command = lib.getExe inputs'.crystal.packages.treefmt-crystal;
-            options = [];
+            command = "${pkgs.crystal}/bin/crystal";
+            options = ["tool" "format"];
           };
           projectRootFile = "flake.nix";
         };
