@@ -207,7 +207,7 @@
           in {
             assertions = [
               {
-                assertion = cfg.github.teams == [] || cfg.github.tokenFile != null;
+                assertion = cfg.github.teams != [] -> cfg.github.tokenFile != null;
                 message = "programs.auth-keys-hub.github.teams requires tokenFile to be set as well";
               }
             ];
