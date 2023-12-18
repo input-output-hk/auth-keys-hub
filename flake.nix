@@ -173,11 +173,33 @@
         in
           lib.mkIf cfg.enable {
             assertions = [
+              # Prevent lockout from misconfigured github teams
               {
                 assertion = cfg.github.teams != [] -> cfg.github.tokenFile != null;
                 message = "programs.auth-keys-hub.github.teams requires tokenFile to be set as well";
               }
+              # Prevent lockout from misconfigured gitlab groups
+              {
+                assertion = cfg.gitlab.groups != [] -> cfg.gitlab.tokenFile != null;
+                message = "programs.auth-keys-hub.gitlab.groups requires tokenFile to be set as well";
+              }
+              # Prevent lockouts from not configuring any keys, ex: fail2ban breaking existing conns on a subsequent ssh attempt
+              {
+                assertion = ! (cfg.github.teams == [] && cfg.github.users == [] && cfg.gitlab.groups == [] && cfg.gitlab.users == []);
+                message = "programs.auth-keys-hub requires declaring at least one github or gitlab user, group or team to avoid unintentional lockouts";
+              }
             ];
+
+            warnings =
+              # Prevent lockout from local or upstream token breakage
+              lib.optional ((cfg.github.teams != [] && cfg.github.users == []) || (cfg.gitlab.groups != [] && cfg.gitlab.users == []))
+                "programs.auth-keys-hub recommends declaring at least 1 github or gitlab user when github teams or gitlab groups are used"
+              ++
+              # Prevent lockout from other edge cases, ex: a) removal of auth-keys-hub module without setting up keys; b) bugs; c) tail events, etc
+              lib.optional (
+                builtins.all (l: l == []) (map (user: config.users.users.${user}.openssh.authorizedKeys.keys) (builtins.attrNames config.users.users))
+                && builtins.all (l: l == []) (map (user: config.users.users.${user}.openssh.authorizedKeys.keyFiles) (builtins.attrNames config.users.users))
+              ) "programs.auth-keys-hub recommends declaring at least 1 authorized key or key file via users.users.*.openssh.authorizedKeys attributes";
           };
 
         join = list:
