@@ -71,7 +71,142 @@
         };
       };
 
-      flake = {config, ...}: {
+      flake = {config, ...}: let
+        options = {
+          lib,
+          pkgs,
+          ...
+        }: {
+          programs.auth-keys-hub = {
+            enable = lib.mkEnableOption "auth-keys-hub";
+
+            package = lib.mkOption {
+              type = lib.types.package;
+              default = pkgs.auth-keys-hub;
+              description = "The derivation to use for /bin/auth-keys-hub";
+            };
+
+            user = lib.mkOption {
+              type = lib.types.str;
+              default = "auth-keys-hub";
+              description = "The user executing the AuthorizedKeysCommand";
+            };
+
+            group = lib.mkOption {
+              type = lib.types.str;
+              default = "auth-keys-hub";
+              description = "The group of the user executing the AuthorizedKeysCommand";
+            };
+
+            dataDir = lib.mkOption {
+              type = lib.types.str;
+              default = "/run/auth-keys-hub";
+              description = "Directory used to cache the authorized_keys file";
+            };
+
+            ttl = lib.mkOption {
+              type = lib.types.str;
+              default = "1h";
+              description = "how often to fetch new keys, format is 1d2h3m4s";
+            };
+
+            gitlab = {
+              host = lib.mkOption {
+                type = lib.types.str;
+                default = "gitlab.com";
+                description = "Change this when using self hosted GitLab";
+              };
+
+              users = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [];
+                description = "List of GitLab user names that are allowed to login";
+              };
+
+              groups = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [];
+                description = "List of GitLab groups that are allowed to login";
+              };
+
+              tokenFile = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Read the GitLab token from this file, required when groups are used";
+              };
+            };
+
+            github = {
+              host = lib.mkOption {
+                type = lib.types.str;
+                default = "github.com";
+                description = "Change this when using GitHub Enterprise";
+              };
+
+              users = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [];
+                description = "List of GitHub user names that are allowed to login";
+              };
+
+              teams = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [];
+                description = "list of org/team that are allowed access (e.g. acme/ops)";
+              };
+
+              tokenFile = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Read the GitHub token from this file, required when org/team is used";
+              };
+            };
+          };
+        };
+
+        common = {
+          config,
+          lib,
+          ...
+        }: let
+          cfg = config.programs.auth-keys-hub;
+        in
+          lib.mkIf cfg.enable {
+            assertions = [
+              {
+                assertion = cfg.github.teams != [] -> cfg.github.tokenFile != null;
+                message = "programs.auth-keys-hub.github.teams requires tokenFile to be set as well";
+              }
+            ];
+          };
+
+        join = list:
+          if list == []
+          then null
+          else builtins.concatStringsSep "," list;
+
+        flags = {
+          config,
+          lib,
+          ...
+        }: let
+          cfg = config.programs.auth-keys-hub;
+        in
+          lib.cli.toGNUCommandLine {} {
+            inherit (cfg) ttl;
+            dir = cfg.dataDir;
+
+            github-host = cfg.github.host;
+            github-users = join cfg.github.users;
+            github-teams = join cfg.github.teams;
+            github-token-file = cfg.github.tokenFile;
+
+            gitlab-host = cfg.gitlab.host;
+            gitlab-users = join cfg.gitlab.users;
+            gitlab-groups = join cfg.gitlab.groups;
+            gitlab-token-file = cfg.gitlab.tokenFile;
+          };
+      in {
         hydraJobs =
           builtins.mapAttrs
           (
@@ -88,7 +223,7 @@
           )
           config.packages;
 
-        nixosModules.auth-keys-hub = {
+        nixosModules.auth-keys-hub = moduleArgs @ {
           config,
           pkgs,
           lib,
@@ -96,122 +231,11 @@
         }: let
           cfg = config.programs.auth-keys-hub;
         in {
-          options = {
-            programs.auth-keys-hub = {
-              enable = lib.mkEnableOption "auth-keys-hub";
+          imports = [common];
 
-              package = lib.mkOption {
-                type = lib.types.package;
-                default = pkgs.auth-keys-hub;
-                description = "The derivation to use for /bin/auth-keys-hub";
-              };
+          options = options moduleArgs;
 
-              user = lib.mkOption {
-                type = lib.types.str;
-                default = "auth-keys-hub";
-                description = "The user executing the AuthorizedKeysCommand";
-              };
-
-              group = lib.mkOption {
-                type = lib.types.str;
-                default = "auth-keys-hub";
-                description = "The group of the user executing the AuthorizedKeysCommand";
-              };
-
-              dataDir = lib.mkOption {
-                type = lib.types.str;
-                default = "/run/auth-keys-hub";
-                description = "Directory used to cache the authorized_keys file";
-              };
-
-              ttl = lib.mkOption {
-                type = lib.types.str;
-                default = "1h";
-                description = "how often to fetch new keys, format is 1d2h3m4s";
-              };
-
-              gitlab = {
-                host = lib.mkOption {
-                  type = lib.types.str;
-                  default = "gitlab.com";
-                  description = "Change this when using self hosted GitLab";
-                };
-
-                users = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = [];
-                  description = "List of GitLab user names that are allowed to login";
-                };
-
-                groups = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = [];
-                  description = "List of GitLab groups that are allowed to login";
-                };
-
-                tokenFile = lib.mkOption {
-                  type = lib.types.nullOr lib.types.str;
-                  default = null;
-                  description = "Read the GitLab token from this file, required when groups are used";
-                };
-              };
-
-              github = {
-                host = lib.mkOption {
-                  type = lib.types.str;
-                  default = "github.com";
-                  description = "Change this when using GitHub Enterprise";
-                };
-
-                users = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = [];
-                  description = "List of GitHub user names that are allowed to login";
-                };
-
-                teams = lib.mkOption {
-                  type = lib.types.listOf lib.types.str;
-                  default = [];
-                  description = "list of org/team that are allowed access (e.g. acme/ops)";
-                };
-
-                tokenFile = lib.mkOption {
-                  type = lib.types.nullOr lib.types.str;
-                  default = null;
-                  description = "Read the GitHub token from this file, required when org/team is used";
-                };
-              };
-            };
-          };
-
-          config = lib.mkIf cfg.enable (let
-            join = list:
-              if list == []
-              then null
-              else builtins.concatStringsSep "," list;
-
-            flags = lib.cli.toGNUCommandLine {} {
-              inherit (cfg) ttl;
-              dir = cfg.dataDir;
-
-              github-host = cfg.github.host;
-              github-users = join cfg.github.users;
-              github-teams = join cfg.github.teams;
-              github-token-file = cfg.github.tokenFile;
-
-              gitlab-host = cfg.gitlab.host;
-              gitlab-users = join cfg.gitlab.users;
-              gitlab-groups = join cfg.gitlab.groups;
-              gitlab-token-file = cfg.gitlab.tokenFile;
-            };
-          in {
-            assertions = [
-              {
-                assertion = cfg.github.teams != [] -> cfg.github.tokenFile != null;
-                message = "programs.auth-keys-hub.github.teams requires tokenFile to be set as well";
-              }
-            ];
-
+          config = lib.mkIf cfg.enable {
             users.users.${cfg.user} = {
               description = "auth-keys-hub user";
               isSystemUser = true;
@@ -225,8 +249,8 @@
             environment.etc."ssh/auth-keys-hub" = {
               mode = "0755";
               text = ''
-                #!${pkgs.bash}/bin/bash
-                exec ${cfg.package}/bin/auth-keys-hub ${lib.escapeShellArgs flags} "$@"
+                #!${lib.getExe pkgs.dash}
+                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs (flags moduleArgs)} "$@"
               '';
             };
 
@@ -234,7 +258,68 @@
               authorizedKeysCommand = "/etc/ssh/auth-keys-hub --user %u";
               authorizedKeysCommandUser = cfg.user;
             };
-          });
+          };
+        };
+
+        darwinModules.auth-keys-hub = moduleArgs @ {
+          config,
+          pkgs,
+          lib,
+          ...
+        }: let
+          cfg = config.programs.auth-keys-hub;
+
+          wrapperPath = "/etc/ssh/auth-keys-hub";
+        in {
+          imports = [common];
+
+          options = options moduleArgs;
+
+          config = lib.mkIf cfg.enable {
+            assertions = [
+              {
+                assertion = builtins.elem "auth-keys-hub" config.users.knownUsers;
+                message = "set users.knownUsers to enable the auth-keys-hub user";
+              }
+              {
+                assertion = builtins.elem "auth-keys-hub" config.users.knownGroups;
+                message = "set users.knownGroups to enable the auth-keys-hub group";
+              }
+            ];
+
+            users = {
+              users.${cfg.user} = {
+                description = "auth-keys-hub user";
+                isHidden = true;
+                uid = lib.mkDefault 503;
+                gid = lib.mkDefault config.users.groups.${cfg.group}.gid;
+              };
+
+              groups.${cfg.group} = {
+                description = "auth-keys-hub group";
+                gid = lib.mkDefault 503;
+              };
+            };
+
+            environment.etc."ssh/sshd_config.d/102-authorized-keys-command.conf".text = ''
+              AuthorizedKeysCommand ${wrapperPath} --user %u
+              AuthorizedKeysCommandUser ${cfg.user}
+            '';
+
+            system.activationScripts.preActivation.text = ''
+              mkdir -p ${lib.escapeShellArg cfg.dataDir}
+              chown ${toString config.users.users.${cfg.user}.uid}:${toString config.users.groups.${cfg.group}.gid} ${lib.escapeShellArg cfg.dataDir}
+              chmod 0700 ${lib.escapeShellArg cfg.dataDir}
+
+              # We cannot use nix-darwin's `environment.etc` option for this
+              # because we need to make the file executable and there is no `mode` option.
+              cat > ${lib.escapeShellArg wrapperPath} <<EOF
+              #!${lib.getExe pkgs.dash}
+              exec ${lib.getExe cfg.package} ${lib.escapeShellArgs (flags moduleArgs)} "$@"
+              EOF
+              chmod 0755 ${lib.escapeShellArg wrapperPath}
+            '';
+          };
         };
       };
     };
