@@ -193,7 +193,7 @@
             warnings =
               # Prevent lockout from local or upstream token breakage
               lib.optional ((cfg.github.teams != [] && cfg.github.users == []) || (cfg.gitlab.groups != [] && cfg.gitlab.users == []))
-                "programs.auth-keys-hub recommends declaring at least 1 github or gitlab user when github teams or gitlab groups are used"
+              "programs.auth-keys-hub recommends declaring at least 1 github or gitlab user when github teams or gitlab groups are used"
               ++
               # Prevent lockout from other edge cases, ex: a) removal of auth-keys-hub module without setting up keys; b) bugs; c) tail events, etc
               lib.optional (
