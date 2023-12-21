@@ -10,7 +10,7 @@
 
   outputs = inputs:
     inputs.flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux" "aarch64-darwin"];
+      systems = ["x86_64-linux" "aarch64-darwin" "aarch64-linux"];
 
       imports = [
         inputs.treefmt-nix.flakeModule
@@ -40,7 +40,7 @@
         packages = {
           default = config.packages.auth-keys-hub;
 
-          auth-keys-hub = pkgs.crystal.buildCrystalPackage {
+          auth-keys-hub = pkgs.crystal.buildCrystalPackage rec {
             version = "0.0.3";
             pname = "auth-keys-hub";
             format = "crystal";
@@ -56,6 +56,8 @@
               src = "src/auth-keys-hub.cr";
               options = ["--release"];
             };
+
+            meta.mainProgram = pname;
           };
         };
 
