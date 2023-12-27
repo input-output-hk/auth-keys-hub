@@ -339,6 +339,7 @@
               # because we need to make the file executable and there is no `mode` option.
               cat > ${lib.escapeShellArg wrapperPath} <<EOF
               #!${lib.getExe pkgs.dash}
+              export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
               exec ${lib.getExe cfg.package} ${lib.escapeShellArgs (flags moduleArgs)} "$@"
               EOF
               chmod 0755 ${lib.escapeShellArg wrapperPath}
