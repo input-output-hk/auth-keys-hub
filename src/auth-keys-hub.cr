@@ -52,11 +52,14 @@ struct AuthKeysHub
     end
 
     # fetch keys from gitlab
-    def keys(config, channel)
+    def keys(config, channel) : Array(String)
       client = HTTP::Client.new(uri: URI.parse("https://#{config.gitlab_host}"))
       client.read_timeout = 5.seconds
       response = client.get("/api/v4/users/#{username}/keys")
-      return unless response.status == HTTP::Status::OK
+      unless response.status == HTTP::Status::OK
+        Log.warn { "Response for gitlab user #{username} was not OK" }
+        return [] of String
+      end
       Array(GitlabUserKey).from_json(response.body).select(&.viable?).compact.map { |key|
         "#{key.key} #{key.title}"
       }
@@ -80,17 +83,23 @@ struct AuthKeysHub
       to_s <=> other.to_s
     end
 
-    def keys(config, channel)
+    def keys(config, channel) : Array(String)
       client = HTTP::Client.new(uri: URI.parse("https://#{config.github_host}"))
+      client.connect_timeout = 5.seconds
+      client.write_timeout = 5.seconds
       client.read_timeout = 5.seconds
       response = client.get("/#{login}.keys")
-      return unless response.status == HTTP::Status::OK
+      unless response.status == HTTP::Status::OK
+        Log.warn { "Response for github user #{login} was not OK" }
+        return [] of String
+      end
       (response.body.split("\n") - [""]).map { |line| "#{line} #{login}" }
     end
   end
 
   alias User = GitHubUser | GitlabUser
 
+  property fallback_key : String?
   property login_user : String?
   property users = [] of User
   property dir = Path.new("/tmp")
@@ -193,6 +202,10 @@ struct AuthKeysHub
 
   def update_github_team_page(client, uri)
     response = client.get(uri.request_target)
+    unless response.status == HTTP::Status::OK
+      Log.warn { "Response for #{uri.request_target} was not OK" }
+      return
+    end
     users.concat Array(GitHubUser).from_json(response.body)
 
     case response.headers["Link"]?
@@ -236,6 +249,11 @@ struct AuthKeysHub
     params = URI::Params.encode({"per_page" => "100", "page" => page.to_s, "state" => "active"})
     uri.query = params
     response = client.get(uri.request_target)
+    unless response.status == HTTP::Status::OK
+      Log.warn { "Response from #{uri.request_target} was not OK" }
+      return
+    end
+
     users.concat Array(GitlabUser).from_json(response.body)
 
     if (next_page = response.headers["x-next-page"]?) && next_page != ""
@@ -287,19 +305,28 @@ struct AuthKeysHub
       users.each do |user|
         case recv = channel.receive
         in Array(String)
-          recv.each { |line|
+          recv.each do |line|
             success += 1
             fd.puts(line)
-          }
+          end
         in Exception
           Log.error(exception: recv) { "Updating keys for #{user}" }
         end
       end
     end
 
+    channel.close
+
     if success == 0
-      Log.warn { "No user keys found, will not update." }
-      return
+      Log.warn { "No user keys found." }
+
+      if fallback = fallback_key
+        File.write("#{file}.tmp", fallback)
+        Log.warn { "Using fallback key: #{fallback.inspect}" }
+      else
+        Log.warn { "Will not update." }
+        return
+      end
     end
 
     File.rename("#{file}.tmp", file)
@@ -328,10 +355,11 @@ OptionParser.parse do |parser|
   parser.on("--gitlab-groups=TEAMS", "GitLab group or project names, comma separated") { |value| akh.gitlab_groups = value.split(",").map(&.strip) }
 
   parser.on("--user=LOGINNAME", "User requested by SSH connection") { |value| akh.login_user = value }
+  parser.on("--fallback=KEY", "Key used in case of failure") { |value| akh.fallback_key = value }
   parser.on("--dir=PATH", "Directory for storing tempoary files") { |value| akh.dir = Path.new(value) }
   parser.on("--ttl=TIMESPAN", "Interval before refresh (e.g. 1d2h3h4s)") { |value| akh.ttl = parse_time_span(value) }
 
-  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.3"; exit }
+  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.4"; exit }
   parser.on("--force", "Delete cached files first") { akh.force = true }
   parser.on("--debug", "Some logging useful for debugging") { Log.setup(Log::Severity::Debug) }
   parser.on("-h", "--help", "Show this help") { puts parser; exit }
@@ -343,15 +371,17 @@ OptionParser.parse do |parser|
   end
 end
 
-Log.setup_from_env(
-  default_level: :debug,
-  backend: Log::IOBackend.new(STDERR),
-)
+File.open(akh.dir / "log", "w") do |log|
+  Log.setup_from_env(
+    default_level: :debug,
+    backend: Log::IOBackend.new(io: IO::MultiWriter.new(STDERR, log), dispatcher: Log::DispatchMode::Sync),
+  )
 
-begin
-  akh.update
-rescue ex
-  Log.error(exception: ex) { "Failed to update #{akh.file}" }
+  begin
+    akh.update
+  rescue ex
+    Log.error(exception: ex) { "Failed to update #{akh.file}" }
+  end
+
+  akh.output
 end
-
-akh.output

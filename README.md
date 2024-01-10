@@ -15,6 +15,7 @@ OpenSSH which thus grants them access.
 - Will still be able to work with stale data in case of a GitHub outage
 - Supports command-line arguments and environment variables for configuration
 - Integrates with OpenSSH's `AuthorizedKeysCommand` configuration
+- Provide a fallback key for peace of mind 
 
 ## Warning
 
@@ -33,9 +34,9 @@ OpenSSH which thus grants them access.
   between removing a user from a team and it actually taking effect. However,
   this can be used to alleviate quota issues.
 
-* Authorized keys are written to /run/auth-keys-hub by default. This leads to
-  them being deleted on reboot on most setups.
-  If that is an issue for you, change the location.
+* Authorized keys are written to /tmp by default. This leads to them being
+  deleted on reboot on most setups.
+  If that is an issue for you, change the location using the `--dir` flag.
 
 ## Building
 
