@@ -344,20 +344,20 @@ akh = AuthKeysHub.new
 OptionParser.parse do |parser|
   parser.banner = "Usage: auth-keys-hub [arguments]"
 
-  parser.on("--github-users=NAMES", "GitHub user names, comma separated") { |value| akh.github_users = value.split(",") }
   parser.on("--github-host=HOST", "GitHub Host (e.g. github.com)") { |value| akh.github_host = value }
   parser.on("--github-teams=TEAMS", "GitHub team names, including organization name, comma separated (e.g. acme/ops) ") { |value| akh.github_teams = value.split(",").map(&.strip) }
   parser.on("--github-token-file=PATH", "File containing the GitHub token") { |value| akh.github_token = File.read(value).strip }
+  parser.on("--github-users=NAMES", "GitHub user names, comma separated") { |value| akh.github_users = value.split(",") }
 
-  parser.on("--gitlab-host=HOST", "GitLab Host (e.g. gitlab.com)") { |value| akh.gitlab_host = value }
-  parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.gitlab_users = value.split(",") }
-  parser.on("--gitlab-token-file=PATH", "File containing the GitLab token") { |value| akh.gitlab_token = File.read(value).strip }
   parser.on("--gitlab-groups=TEAMS", "GitLab group or project names, comma separated") { |value| akh.gitlab_groups = value.split(",").map(&.strip) }
+  parser.on("--gitlab-host=HOST", "GitLab Host (e.g. gitlab.com)") { |value| akh.gitlab_host = value }
+  parser.on("--gitlab-token-file=PATH", "File containing the GitLab token") { |value| akh.gitlab_token = File.read(value).strip }
+  parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.gitlab_users = value.split(",") }
 
-  parser.on("--user=LOGINNAME", "User requested by SSH connection") { |value| akh.login_user = value }
-  parser.on("--fallback=KEY", "Key used in case of failure") { |value| akh.fallback_key = value }
   parser.on("--dir=PATH", "Directory for storing tempoary files") { |value| akh.dir = Path.new(value) }
+  parser.on("--fallback=KEY", "Key used in case of failure") { |value| akh.fallback_key = value }
   parser.on("--ttl=TIMESPAN", "Interval before refresh (e.g. 1d2h3h4s)") { |value| akh.ttl = parse_time_span(value) }
+  parser.on("--user=LOGINNAME", "User requested by SSH connection") { |value| akh.login_user = value }
 
   parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.4"; exit }
   parser.on("--force", "Delete cached files first") { akh.force = true }

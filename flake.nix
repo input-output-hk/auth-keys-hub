@@ -116,6 +116,12 @@
               description = "how often to fetch new keys, format is 1d2h3m4s";
             };
 
+            fallback = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Key used in case of failure";
+            };
+
             gitlab = {
               host = lib.mkOption {
                 type = lib.types.str;
@@ -221,18 +227,18 @@
           cfg = config.programs.auth-keys-hub;
         in
           lib.cli.toGNUCommandLine {} {
-            inherit (cfg) ttl;
-            dir = cfg.dataDir;
-
             github-host = cfg.github.host;
-            github-users = join cfg.github.users;
             github-teams = join cfg.github.teams;
             github-token-file = cfg.github.tokenFile;
+            github-users = join cfg.github.users;
 
-            gitlab-host = cfg.gitlab.host;
-            gitlab-users = join cfg.gitlab.users;
             gitlab-groups = join cfg.gitlab.groups;
+            gitlab-host = cfg.gitlab.host;
             gitlab-token-file = cfg.gitlab.tokenFile;
+            gitlab-users = join cfg.gitlab.users;
+
+            dir = cfg.dataDir;
+            inherit (cfg) ttl fallback;
           };
       in {
         hydraJobs =
