@@ -303,7 +303,7 @@
         }: let
           cfg = config.programs.auth-keys-hub;
 
-          wrapperPath = "/etc/ssh/auth-keys-hub";
+          wrapperPath = "/etc/" + config.environment.etc."ssh/auth-keys-hub".target;
         in {
           imports = [common];
 
@@ -335,24 +335,24 @@
               };
             };
 
-            environment.etc."ssh/sshd_config.d/102-authorized-keys-command.conf".text = ''
-              AuthorizedKeysCommand ${wrapperPath} --user %u
-              AuthorizedKeysCommandUser ${cfg.user}
-            '';
+            environment.etc = {
+              "ssh/sshd_config.d/102-authorized-keys-command.conf".text = ''
+                AuthorizedKeysCommand ${wrapperPath} --user %u
+                AuthorizedKeysCommandUser ${cfg.user}
+              '';
+
+              "ssh/auth-keys-hub".source = pkgs.writeScript "auth-keys-hub" ''
+                #!${lib.getExe pkgs.dash}
+                export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs (flags moduleArgs)} "$@"
+              '';
+            };
 
             system.activationScripts.preActivation.text = ''
+              # prepare auth-keys-hub data directory
               mkdir -p ${lib.escapeShellArg cfg.dataDir}
               chown ${toString config.users.users.${cfg.user}.uid}:${toString config.users.groups.${cfg.group}.gid} ${lib.escapeShellArg cfg.dataDir}
               chmod 0700 ${lib.escapeShellArg cfg.dataDir}
-
-              # We cannot use nix-darwin's `environment.etc` option for this
-              # because we need to make the file executable and there is no `mode` option.
-              cat > ${lib.escapeShellArg wrapperPath} <<EOF
-              #!${lib.getExe pkgs.dash}
-              export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-              exec ${lib.getExe cfg.package} ${lib.escapeShellArgs (flags moduleArgs)} "$@"
-              EOF
-              chmod 0755 ${lib.escapeShellArg wrapperPath}
             '';
           };
         };
