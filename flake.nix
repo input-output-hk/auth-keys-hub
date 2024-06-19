@@ -79,6 +79,7 @@
 
       flake = {config, ...}: let
         options = {
+          config,
           lib,
           pkgs,
           ...
@@ -173,6 +174,33 @@
                 description = "Read the GitHub token from this file, required when org/team is used";
               };
             };
+
+            flags = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              readOnly = true;
+              default = let
+                cfg = config.programs.auth-keys-hub;
+
+                join = list:
+                  if list == []
+                  then null
+                  else builtins.concatStringsSep "," list;
+              in
+                lib.cli.toGNUCommandLine {} {
+                  github-host = cfg.github.host;
+                  github-teams = join cfg.github.teams;
+                  github-token-file = cfg.github.tokenFile;
+                  github-users = join cfg.github.users;
+
+                  gitlab-groups = join cfg.gitlab.groups;
+                  gitlab-host = cfg.gitlab.host;
+                  gitlab-token-file = cfg.gitlab.tokenFile;
+                  gitlab-users = join cfg.gitlab.users;
+
+                  dir = cfg.dataDir;
+                  inherit (cfg) ttl fallback;
+                };
+            };
           };
         };
 
@@ -212,33 +240,6 @@
                 builtins.all (l: l == []) (map (user: config.users.users.${user}.openssh.authorizedKeys.keys) (builtins.attrNames config.users.users))
                 && builtins.all (l: l == []) (map (user: config.users.users.${user}.openssh.authorizedKeys.keyFiles) (builtins.attrNames config.users.users))
               ) "programs.auth-keys-hub recommends declaring at least 1 authorized key or key file via users.users.*.openssh.authorizedKeys attributes";
-          };
-
-        join = list:
-          if list == []
-          then null
-          else builtins.concatStringsSep "," list;
-
-        flags = {
-          config,
-          lib,
-          ...
-        }: let
-          cfg = config.programs.auth-keys-hub;
-        in
-          lib.cli.toGNUCommandLine {} {
-            github-host = cfg.github.host;
-            github-teams = join cfg.github.teams;
-            github-token-file = cfg.github.tokenFile;
-            github-users = join cfg.github.users;
-
-            gitlab-groups = join cfg.gitlab.groups;
-            gitlab-host = cfg.gitlab.host;
-            gitlab-token-file = cfg.gitlab.tokenFile;
-            gitlab-users = join cfg.gitlab.users;
-
-            dir = cfg.dataDir;
-            inherit (cfg) ttl fallback;
           };
       in {
         hydraJobs =
@@ -284,7 +285,7 @@
               mode = "0755";
               text = ''
                 #!${lib.getExe pkgs.dash}
-                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs (flags moduleArgs)} "$@"
+                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs cfg.flags} "$@"
               '';
             };
 
@@ -344,7 +345,7 @@
               "ssh/auth-keys-hub".source = pkgs.writeScript "auth-keys-hub" ''
                 #!${lib.getExe pkgs.dash}
                 export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs (flags moduleArgs)} "$@"
+                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs cfg.flags} "$@"
               '';
             };
 
