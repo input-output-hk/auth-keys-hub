@@ -77,14 +77,20 @@
         };
       };
 
-      flake = {config, ...}: let
-        options = {
+      flake = {
+        config,
+        lib,
+        pkgs,
+        ...
+      }: let
+        commonModule = {
           config,
           lib,
-          pkgs,
           ...
-        }: {
-          programs.auth-keys-hub = {
+        }: let
+          cfg = config.programs.auth-keys-hub;
+        in {
+          options.programs.auth-keys-hub = {
             enable = lib.mkEnableOption "auth-keys-hub";
 
             package = lib.mkOption {
@@ -202,16 +208,8 @@
                 };
             };
           };
-        };
 
-        common = {
-          config,
-          lib,
-          ...
-        }: let
-          cfg = config.programs.auth-keys-hub;
-        in
-          lib.mkIf cfg.enable {
+          config = lib.mkIf cfg.enable {
             assertions = [
               # Prevent lockout from misconfigured github teams
               {
@@ -241,6 +239,7 @@
                 && builtins.all (l: l == []) (map (user: config.users.users.${user}.openssh.authorizedKeys.keyFiles) (builtins.attrNames config.users.users))
               ) "programs.auth-keys-hub recommends declaring at least 1 authorized key or key file via users.users.*.openssh.authorizedKeys attributes";
           };
+        };
       in {
         hydraJobs =
           builtins.mapAttrs
@@ -258,7 +257,7 @@
           )
           config.packages;
 
-        nixosModules.auth-keys-hub = moduleArgs @ {
+        nixosModules.auth-keys-hub = {
           config,
           pkgs,
           lib,
@@ -266,9 +265,7 @@
         }: let
           cfg = config.programs.auth-keys-hub;
         in {
-          imports = [common];
-
-          options = options moduleArgs;
+          imports = [commonModule];
 
           config = lib.mkIf cfg.enable {
             users.users.${cfg.user} = {
@@ -296,7 +293,7 @@
           };
         };
 
-        darwinModules.auth-keys-hub = moduleArgs @ {
+        darwinModules.auth-keys-hub = {
           config,
           pkgs,
           lib,
@@ -306,9 +303,7 @@
 
           wrapperPath = "/etc/" + config.environment.etc."ssh/auth-keys-hub".target;
         in {
-          imports = [common];
-
-          options = options moduleArgs;
+          imports = [commonModule];
 
           config = lib.mkIf cfg.enable {
             assertions = [
