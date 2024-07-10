@@ -339,6 +339,13 @@ struct AuthKeysHub
   end
 end
 
+def read_file(file)
+  File.read(file).strip
+rescue ex
+  Log.error(exception: ex) { "reading file #{file}" }
+  nil
+end
+
 akh = AuthKeysHub.new
 
 OptionParser.parse do |parser|
@@ -346,12 +353,12 @@ OptionParser.parse do |parser|
 
   parser.on("--github-host=HOST", "GitHub Host (e.g. github.com)") { |value| akh.github_host = value }
   parser.on("--github-teams=TEAMS", "GitHub team names, including organization name, comma separated (e.g. acme/ops) ") { |value| akh.github_teams = value.split(",").map(&.strip) }
-  parser.on("--github-token-file=PATH", "File containing the GitHub token") { |value| akh.github_token = File.read(value).strip }
+  parser.on("--github-token-file=PATH", "File containing the GitHub token") { |value| akh.github_token = read_file(value) }
   parser.on("--github-users=NAMES", "GitHub user names, comma separated") { |value| akh.github_users = value.split(",") }
 
   parser.on("--gitlab-groups=TEAMS", "GitLab group or project names, comma separated") { |value| akh.gitlab_groups = value.split(",").map(&.strip) }
   parser.on("--gitlab-host=HOST", "GitLab Host (e.g. gitlab.com)") { |value| akh.gitlab_host = value }
-  parser.on("--gitlab-token-file=PATH", "File containing the GitLab token") { |value| akh.gitlab_token = File.read(value).strip }
+  parser.on("--gitlab-token-file=PATH", "File containing the GitLab token") { |value| akh.gitlab_token = read_file(value) }
   parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.gitlab_users = value.split(",") }
 
   parser.on("--dir=PATH", "Directory for storing tempoary files") { |value| akh.dir = Path.new(value) }

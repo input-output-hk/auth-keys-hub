@@ -45,7 +45,7 @@
           default = config.packages.auth-keys-hub;
 
           auth-keys-hub = pkgs.crystal.buildCrystalPackage rec {
-            version = "0.0.4";
+            version = "0.1.0";
             pname = "auth-keys-hub";
             format = "crystal";
             src = inputs.inclusive.lib.inclusive ./. [src/auth-keys-hub.cr];
