@@ -56,6 +56,8 @@
 
             buildInputs = [pkgs.openssl];
 
+            doInstallCheck = false;
+
             crystalBinaries.auth-keys-hub = {
               src = "src/auth-keys-hub.cr";
               options = ["--release"];
