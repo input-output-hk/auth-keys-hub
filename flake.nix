@@ -302,8 +302,6 @@
           ...
         }: let
           cfg = config.programs.auth-keys-hub;
-
-          wrapperPath = "/etc/" + config.environment.etc."ssh/auth-keys-hub".target;
         in {
           imports = [commonModule];
 
@@ -334,15 +332,32 @@
             };
 
             environment.etc = {
-              "ssh/sshd_config.d/102-authorized-keys-command.conf".text = ''
-                AuthorizedKeysCommand ${wrapperPath} --user %u
+              # Needs to be lexicographically ordered before `101-authorized-keys.conf` by nix-darwin.
+              "ssh/sshd_config.d/100-auth-keys-hub.conf".text = ''
+                # Cannot call the script directly on systems where /nix/store has too open permissions,
+                # which could be the case when it is a symlink or on another disk, for example.
+                AuthorizedKeysCommand /bin/sh /etc/${config.environment.etc."ssh/auth-keys-hub".target} %u
                 AuthorizedKeysCommandUser ${cfg.user}
               '';
 
               "ssh/auth-keys-hub".source = pkgs.writeScript "auth-keys-hub" ''
                 #!${lib.getExe pkgs.dash}
+
+                [ "$#" -eq 1 ] || {
+                  echo >&2 "$0: error: Expected only one argument (the target user) but got $#."
+                  exit 1
+                }
+
+                # As we are overriding the `AuthorizedKeysCommand` set by nix-darwin
+                # (since https://github.com/nix-darwin/nix-darwin/pull/976)
+                # we need to do its job as well to avoid breaking the implementation of
+                # `users.users.<name>.openssh.authorizedKeys`.
+                # For nix-darwin installations since before that PR
+                # this directory does not exist, let's just ignore it then.
+                cat /etc/ssh/nix_authorized_keys.d/"$1" || :
+
                 export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs cfg.flags} "$@"
+                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs cfg.flags} --user "$1"
               '';
             };
 
