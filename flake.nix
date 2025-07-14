@@ -357,7 +357,7 @@
                 cat /etc/ssh/nix_authorized_keys.d/"$1" || :
 
                 export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
-                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs cfg.flags} --user "$1"
+                exec ${lib.getExe cfg.package} ${lib.escapeShellArgs cfg.flags} --user "$1" 2>/dev/null
               '';
             };
 
