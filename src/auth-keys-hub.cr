@@ -346,6 +346,14 @@ rescue ex
   nil
 end
 
+# Ensure no errors go to stdout.
+# When wrapped by a custom script in sshd's `AuthorizedKeysCommand`,
+# the user must be able to suppress all log messages by redirecting stderr.
+Log.setup_from_env(
+  default_level: :debug,
+  backend: Log::IOBackend.new(io: STDERR, dispatcher: Log::DispatchMode::Sync),
+)
+
 akh = AuthKeysHub.new
 
 OptionParser.parse do |parser|
