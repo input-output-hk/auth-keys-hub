@@ -88,6 +88,7 @@
         commonModule = {
           config,
           lib,
+          pkgs,
           ...
         }: let
           cfg = config.programs.auth-keys-hub;
@@ -115,7 +116,10 @@
 
             dataDir = lib.mkOption {
               type = lib.types.str;
-              default = "/run/auth-keys-hub";
+              default =
+                if pkgs.stdenv.targetPlatform.isMacOS
+                then "/Library/Security/auth-keys-hub"
+                else "/var/lib/auth-keys-hub";
               description = "Directory used to cache the authorized_keys file";
             };
 
