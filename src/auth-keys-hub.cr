@@ -53,7 +53,8 @@ struct AuthKeysHub
 
     # fetch keys from gitlab
     def keys(config, channel) : Array(String)
-      client = HTTP::Client.new(uri: URI.parse("https://#{config.gitlab_host}"))
+      base_uri = config.parse_gitlab_uri
+      client = HTTP::Client.new(uri: base_uri)
       client.read_timeout = 5.seconds
       response = client.get("/api/v4/users/#{username}/keys")
       unless response.status == HTTP::Status::OK
@@ -61,7 +62,7 @@ struct AuthKeysHub
         return [] of String
       end
       Array(GitlabUserKey).from_json(response.body).select(&.viable?).compact.map { |key|
-        "#{key.key} #{key.title}"
+        "#{key.key} #{username}"
       }
     end
   end
@@ -84,7 +85,8 @@ struct AuthKeysHub
     end
 
     def keys(config, channel) : Array(String)
-      client = HTTP::Client.new(uri: URI.parse("https://#{config.github_host}"))
+      base_uri = config.parse_github_uri
+      client = HTTP::Client.new(uri: base_uri)
       client.connect_timeout = 5.seconds
       client.write_timeout = 5.seconds
       client.read_timeout = 5.seconds
@@ -116,6 +118,24 @@ struct AuthKeysHub
 
   property force = false
   property ttl = Time::Span.new(hours: 1)
+
+  # Parse GitHub host, supporting both bare hostnames and full URLs
+  def parse_github_uri : URI
+    if github_host.includes?("://")
+      URI.parse(github_host)
+    else
+      URI.parse("https://#{github_host}")
+    end
+  end
+
+  # Parse GitLab host, supporting both bare hostnames and full URLs
+  def parse_gitlab_uri : URI
+    if gitlab_host.includes?("://")
+      URI.parse(gitlab_host)
+    else
+      URI.parse("https://#{gitlab_host}")
+    end
+  end
 
   def file
     if login_user
@@ -182,7 +202,9 @@ struct AuthKeysHub
 
   def update_github_team(org, team)
     params = URI::Params.encode({"per_page" => "100", "page" => "1"})
-    uri = URI.new("https", "api.#{github_host}", path: "/orgs/#{org}/teams/#{team}/members", query: params)
+    base_uri = parse_github_uri
+    api_host = base_uri.scheme == "https" && base_uri.host == "github.com" ? "api.github.com" : base_uri.host.not_nil!
+    uri = URI.new(base_uri.scheme, api_host, base_uri.port, "/orgs/#{org}/teams/#{team}/members", params)
 
     client = HTTP::Client.new(uri: uri)
     client.read_timeout = 5.seconds
@@ -234,7 +256,8 @@ struct AuthKeysHub
   end
 
   def update_gitlab_group(group)
-    uri = URI.new("https", gitlab_host, path: "/api/v4/groups/#{group}/members/all")
+    base_uri = parse_gitlab_uri
+    uri = URI.new(base_uri.scheme, base_uri.host, base_uri.port, "/api/v4/groups/#{group}/members/all")
 
     client = HTTP::Client.new(uri: uri)
     client.read_timeout = 5.seconds
@@ -285,9 +308,14 @@ struct AuthKeysHub
     users.sort!
     users.uniq!
 
+    # Filter users to only those matching the login_user (if specified)
+    if login_user
+      users.select! { |user| user.to_s == login_user }
+    end
+
     if users.empty?
       Log.debug { "No users matching this login name" }
-      File.delete(file)
+      File.delete?(file)
       return
     end
 
@@ -335,7 +363,10 @@ struct AuthKeysHub
   end
 
   def output
-    puts File.read(file) if File.file?(file)
+    return unless File.file?(file)
+
+    # File is already filtered to contain only keys for this Unix user
+    puts File.read(file)
   end
 end
 
@@ -369,12 +400,12 @@ OptionParser.parse do |parser|
   parser.on("--gitlab-token-file=PATH", "File containing the GitLab token") { |value| akh.gitlab_token = read_file(value) }
   parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.gitlab_users = value.split(",") }
 
-  parser.on("--dir=PATH", "Directory for storing tempoary files") { |value| akh.dir = Path.new(value) }
+  parser.on("--dir=PATH", "Directory for storing temporary files") { |value| akh.dir = Path.new(value) }
   parser.on("--fallback=KEY", "Key used in case of failure") { |value| akh.fallback_key = value }
   parser.on("--ttl=TIMESPAN", "Interval before refresh (e.g. 1d2h3h4s)") { |value| akh.ttl = parse_time_span(value) }
   parser.on("--user=LOGINNAME", "User requested by SSH connection") { |value| akh.login_user = value }
 
-  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.0.4"; exit }
+  parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.1.0"; exit }
   parser.on("--force", "Delete cached files first") { akh.force = true }
   parser.on("--debug", "Some logging useful for debugging") { Log.setup(Log::Severity::Debug) }
   parser.on("-h", "--help", "Show this help") { puts parser; exit }
@@ -386,7 +417,7 @@ OptionParser.parse do |parser|
   end
 end
 
-File.open(akh.dir / "log", "w") do |log|
+File.open(akh.dir / "log", "a") do |log|
   Log.setup_from_env(
     default_level: :debug,
     backend: Log::IOBackend.new(io: IO::MultiWriter.new(STDERR, log), dispatcher: Log::DispatchMode::Sync),
