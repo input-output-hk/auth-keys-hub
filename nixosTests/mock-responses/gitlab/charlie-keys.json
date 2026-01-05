@@ -1,0 +1,8 @@
+[
+  {
+    "title": "charlie-key1",
+    "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4dAgs9WxLDY4zQgt0vLnWYce9nif7VVVRd4iIYRuJs",
+    "usage_type": "auth",
+    "expires_at": null
+  }
+]

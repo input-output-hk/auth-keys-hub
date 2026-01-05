@@ -1,0 +1,8 @@
+[
+  {
+    "title": "expired-key1",
+    "key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFRHq+TIbcQlYbjn/L+EdTjequ/njMTEfbjvKsLU6Zr1",
+    "usage_type": "auth",
+    "expires_at": "2020-01-01T00:00:00Z"
+  }
+]

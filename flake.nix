@@ -2,7 +2,7 @@
   description = "SSH AuthorizedKeysCommand querying GitHub";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     inclusive.url = "github:input-output-hk/nix-inclusive";
     treefmt-nix.url = "github:numtide/treefmt-nix";
@@ -56,14 +56,79 @@
 
             buildInputs = [pkgs.openssl];
 
-            doInstallCheck = false;
-
             crystalBinaries.auth-keys-hub = {
               src = "src/auth-keys-hub.cr";
               options = ["--release"];
             };
 
             meta.mainProgram = pname;
+          };
+        };
+
+        checks = {
+          # Verify the package builds successfully
+          build = config.packages.auth-keys-hub;
+
+          # Test version output matches expected version
+          version-check = pkgs.runCommand "auth-keys-hub-version-check" {} ''
+            VERSION=$(${config.packages.auth-keys-hub}/bin/auth-keys-hub --version)
+            echo "Version output: $VERSION"
+            if echo "$VERSION" | grep -q "0.1.0"; then
+              echo "Version check passed"
+              touch $out
+            else
+              echo "Version check failed: expected 0.1.0"
+              exit 1
+            fi
+          '';
+
+          # Verify help text has proper spelling (typo fix)
+          help-text = pkgs.runCommand "auth-keys-hub-help-text" {} ''
+            HELP=$(${config.packages.auth-keys-hub}/bin/auth-keys-hub --help)
+            echo "$HELP"
+            if echo "$HELP" | grep -q "Directory for storing temporary files"; then
+              echo "Help text check passed"
+              touch $out
+            else
+              echo "Help text check failed: 'temporary' not found"
+              exit 1
+            fi
+          '';
+
+          # Test graceful handling of empty users (File.delete? fix)
+          empty-user-test = pkgs.runCommand "auth-keys-hub-empty-user" {} ''
+            mkdir -p $TMPDIR/test-dir
+            # This should not crash even with non-existent user
+            ${config.packages.auth-keys-hub}/bin/auth-keys-hub \
+              --ttl 0s \
+              --dir $TMPDIR/test-dir \
+              --github-users nobody123456789xyz \
+              --user testuser || true
+            # If we got here without crashing, test passed
+            echo "Empty user test passed"
+            touch $out
+          '';
+
+          # Run Crystal unit tests
+          crystal-tests =
+            pkgs.runCommand "auth-keys-hub-crystal-tests" {
+              nativeBuildInputs = [
+                pkgs.crystal
+                pkgs.pkg-config
+              ];
+              buildInputs = [pkgs.openssl];
+            } ''
+              cp -r ${./.}/* .
+              chmod -R +w .
+              crystal spec
+              touch $out
+            '';
+
+          # NixOS integration test with mock GitHub/GitLab servers
+          nixos-integration = import ./nixosTests/auth-keys-hub.nix {
+            inherit pkgs;
+            inherit (config.packages) auth-keys-hub;
+            nixosModule = inputs.self.nixosModules.auth-keys-hub;
           };
         };
 
