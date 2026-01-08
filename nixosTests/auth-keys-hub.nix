@@ -86,6 +86,9 @@ pkgs.testers.runNixOSTest {
 
       networking.firewall.enable = false;
 
+      # Make the auth-keys-hub binary available for direct invocation in tests
+      environment.systemPackages = [auth-keys-hub];
+
       # Create test token files
       environment.etc = {
         "auth-keys-hub/github-token".text = "ghp_test_token_mock";
@@ -246,13 +249,6 @@ pkgs.testers.runNixOSTest {
         "-i /etc/ssh-keys/expired expired@sshserver true"
       )
 
-    with subtest("invalid credentials fail"):
-      # Try to authenticate bob as alice - should fail
-      client.fail(
-        "timeout 10 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-        "-i /etc/ssh-keys/bob alice@sshserver true"
-      )
-
     with subtest("cache survives API outage"):
       # Stop mock servers
       github.systemctl("stop", "mock-github")
@@ -298,14 +294,15 @@ pkgs.testers.runNixOSTest {
       # Clean up per-user cache files but keep the consolidated file
       sshserver.succeed("rm -f /var/lib/auth-keys-hub/authorized_keys_*")
 
-      # Call auth-keys-hub for alice
+      # Call auth-keys-hub for alice - should contain all configured users' keys
+      # (since no constraints are configured, all users can log in as any Unix user)
       sshserver.succeed("sudo -u auth-keys-hub /etc/ssh/auth-keys-hub --user alice")
       # Verify alice-specific cache file exists
       sshserver.succeed("test -f /var/lib/auth-keys-hub/authorized_keys_alice")
       # Verify alice's keys are in alice's cache file
       sshserver.succeed("grep -q ' alice$' /var/lib/auth-keys-hub/authorized_keys_alice")
-      # Verify bob's keys are NOT in alice's cache file
-      sshserver.fail("grep -q ' bob$' /var/lib/auth-keys-hub/authorized_keys_alice")
+      # Without constraints, bob's keys should also be in alice's cache file
+      sshserver.succeed("grep -q ' bob$' /var/lib/auth-keys-hub/authorized_keys_alice")
 
       # Call auth-keys-hub for bob
       sshserver.succeed("sudo -u auth-keys-hub /etc/ssh/auth-keys-hub --user bob")
@@ -313,10 +310,23 @@ pkgs.testers.runNixOSTest {
       sshserver.succeed("test -f /var/lib/auth-keys-hub/authorized_keys_bob")
       # Verify bob's keys are in bob's cache file
       sshserver.succeed("grep -q ' bob$' /var/lib/auth-keys-hub/authorized_keys_bob")
-      # Verify alice's keys are NOT in bob's cache file
-      sshserver.fail("grep -q ' alice$' /var/lib/auth-keys-hub/authorized_keys_bob")
+      # Without constraints, alice's keys should also be in bob's cache file
+      sshserver.succeed("grep -q ' alice$' /var/lib/auth-keys-hub/authorized_keys_bob")
 
       # Verify the original consolidated file still exists from previous tests
       sshserver.succeed("test -f /var/lib/auth-keys-hub/authorized_keys")
+
+    with subtest("per-user cache files with constraints"):
+      # Test that constraints properly restrict which users' keys appear in cache files
+      sshserver.succeed("rm -f /var/lib/auth-keys-hub/authorized_keys_*")
+
+      # Call the binary directly (not the wrapper) with constraints: only alice:constrained should match --user constrained
+      sshserver.succeed("sudo -u auth-keys-hub auth-keys-hub --github-users alice:constrained,bob:otherlimit --github-host http://github --dir /var/lib/auth-keys-hub --user constrained --force")
+      # Verify constrained-specific cache file exists
+      sshserver.succeed("test -f /var/lib/auth-keys-hub/authorized_keys_constrained")
+      # Verify alice's keys are in the constrained cache file (alice:constrained matches)
+      sshserver.succeed("grep -q ' alice$' /var/lib/auth-keys-hub/authorized_keys_constrained")
+      # Verify bob's keys are NOT in the constrained cache file (bob:otherlimit doesn't match)
+      sshserver.fail("grep -q ' bob$' /var/lib/auth-keys-hub/authorized_keys_constrained")
   '';
 }
