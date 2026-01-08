@@ -308,11 +308,6 @@ struct AuthKeysHub
     users.sort!
     users.uniq!
 
-    # Filter users to only those matching the login_user (if specified)
-    if login_user
-      users.select! { |user| user.to_s == login_user }
-    end
-
     if users.empty?
       Log.debug { "No users matching this login name" }
       File.delete?(file)
