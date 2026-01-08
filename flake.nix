@@ -136,7 +136,7 @@
           programs.alejandra.enable = true;
           settings.formatter.crystal = {
             includes = ["*.cr"];
-            excludes = [];
+            excludes = ["nixosTests/mock-server.cr"];
             command = "${pkgs.crystal}/bin/crystal";
             options = ["tool" "format"];
           };
