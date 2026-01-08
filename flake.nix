@@ -61,6 +61,12 @@
               options = ["--release"];
             };
 
+            # Override default installCheckPhase to work around the bug fixed
+            # in this PR: https://github.com/NixOS/nixpkgs/pull/477878
+            installCheckPhase = ''
+              $out/bin/auth-keys-hub --version
+            '';
+
             meta.mainProgram = pname;
           };
         };
