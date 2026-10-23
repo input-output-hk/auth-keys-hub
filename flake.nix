@@ -269,7 +269,7 @@
                   then null
                   else builtins.concatStringsSep "," list;
               in
-                lib.cli.toGNUCommandLine {} {
+                lib.cli.toCommandLineGNU {} {
                   github-host = cfg.github.host;
                   github-teams = join cfg.github.teams;
                   github-token-file = cfg.github.tokenFile;
