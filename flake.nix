@@ -71,84 +71,86 @@
           };
         };
 
-        checks = {
-          # Verify the package builds successfully
-          build = config.packages.auth-keys-hub;
+        checks =
+          {
+            # Verify the package builds successfully
+            build = config.packages.auth-keys-hub;
 
-          # Test version output matches expected version
-          version-check = pkgs.runCommand "auth-keys-hub-version-check" {} ''
-            VERSION=$(${config.packages.auth-keys-hub}/bin/auth-keys-hub --version)
-            echo "Version output: $VERSION"
-            if echo "$VERSION" | grep -q "0.1.0"; then
-              echo "Version check passed"
-              touch $out
-            else
-              echo "Version check failed: expected 0.1.0"
-              exit 1
-            fi
-          '';
+            # Test version output matches expected version
+            version-check = pkgs.runCommand "auth-keys-hub-version-check" {} ''
+              VERSION=$(${config.packages.auth-keys-hub}/bin/auth-keys-hub --version)
+              echo "Version output: $VERSION"
+              if echo "$VERSION" | grep -q "0.1.0"; then
+                echo "Version check passed"
+                touch $out
+              else
+                echo "Version check failed: expected 0.1.0"
+                exit 1
+              fi
+            '';
 
-          # Verify help text has proper spelling (typo fix)
-          help-text = pkgs.runCommand "auth-keys-hub-help-text" {} ''
-            HELP=$(${config.packages.auth-keys-hub}/bin/auth-keys-hub --help)
-            echo "$HELP"
-            if echo "$HELP" | grep -q "Directory for storing temporary files"; then
-              echo "Help text check passed"
-              touch $out
-            else
-              echo "Help text check failed: 'temporary' not found"
-              exit 1
-            fi
-          '';
+            # Verify help text has proper spelling (typo fix)
+            help-text = pkgs.runCommand "auth-keys-hub-help-text" {} ''
+              HELP=$(${config.packages.auth-keys-hub}/bin/auth-keys-hub --help)
+              echo "$HELP"
+              if echo "$HELP" | grep -q "Directory for storing temporary files"; then
+                echo "Help text check passed"
+                touch $out
+              else
+                echo "Help text check failed: 'temporary' not found"
+                exit 1
+              fi
+            '';
 
-          # An authoritative empty selection succeeds without upstream requests.
-          empty-user-test = pkgs.runCommand "auth-keys-hub-empty-user" {} ''
-            mkdir -p $TMPDIR/test-dir
-            ${config.packages.auth-keys-hub}/bin/auth-keys-hub \
-              --ttl 0s \
-              --dir $TMPDIR/test-dir \
-              --github-users synthetic:other \
-              --user testuser > keys
-            test ! -s keys
-            test -f $TMPDIR/test-dir/authorized_keys_testuser
-            test ! -s $TMPDIR/test-dir/authorized_keys_testuser
-            touch $out
-          '';
-
-          cache-regressions =
-            pkgs.runCommand "auth-keys-hub-cache-regressions" {
-              nativeBuildInputs = [pkgs.crystal pkgs.pkg-config];
-              buildInputs = [pkgs.openssl];
-              AUTH_KEYS_HUB_BINARY = "${config.packages.auth-keys-hub}/bin/auth-keys-hub";
-            } ''
-              cp -r ${./spec} spec
-              chmod -R +w spec
-              crystal spec spec/cache_regressions_spec.cr
+            # An authoritative empty selection succeeds without upstream requests.
+            empty-user-test = pkgs.runCommand "auth-keys-hub-empty-user" {} ''
+              mkdir -p $TMPDIR/test-dir
+              ${config.packages.auth-keys-hub}/bin/auth-keys-hub \
+                --ttl 0s \
+                --dir $TMPDIR/test-dir \
+                --github-users synthetic:other \
+                --user testuser > keys
+              test ! -s keys
+              test -f $TMPDIR/test-dir/authorized_keys_testuser
+              test ! -s $TMPDIR/test-dir/authorized_keys_testuser
               touch $out
             '';
 
-          # Run all Crystal specs, including CLI regressions with a local build.
-          crystal-tests =
-            pkgs.runCommand "auth-keys-hub-crystal-tests" {
-              nativeBuildInputs = [
-                pkgs.crystal
-                pkgs.pkg-config
-              ];
-              buildInputs = [pkgs.openssl];
-            } ''
-              cp -r ${./.}/* .
-              chmod -R +w .
-              crystal spec
-              touch $out
-            '';
+            cache-regressions =
+              pkgs.runCommand "auth-keys-hub-cache-regressions" {
+                nativeBuildInputs = [pkgs.crystal pkgs.pkg-config];
+                buildInputs = [pkgs.openssl];
+                AUTH_KEYS_HUB_BINARY = "${config.packages.auth-keys-hub}/bin/auth-keys-hub";
+              } ''
+                cp -r ${./spec} spec
+                chmod -R +w spec
+                crystal spec spec/cache_regressions_spec.cr
+                touch $out
+              '';
 
-          # NixOS integration test with mock GitHub/GitLab servers
-          nixos-integration = import ./nixosTests/auth-keys-hub.nix {
-            inherit pkgs;
-            inherit (config.packages) auth-keys-hub;
-            nixosModule = inputs.self.nixosModules.auth-keys-hub;
+            # Run all Crystal specs, including CLI regressions with a local build.
+            crystal-tests =
+              pkgs.runCommand "auth-keys-hub-crystal-tests" {
+                nativeBuildInputs = [
+                  pkgs.crystal
+                  pkgs.pkg-config
+                ];
+                buildInputs = [pkgs.openssl];
+              } ''
+                cp -r ${./.}/* .
+                chmod -R +w .
+                crystal spec
+                touch $out
+              '';
+          }
+          // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            # NixOS integration test with mock GitHub/GitLab servers (Linux only).
+            nixos-integration = import ./nixosTests/auth-keys-hub.nix {
+              inherit pkgs;
+              inherit (config.packages) auth-keys-hub;
+              nixosModule = inputs.self.nixosModules.auth-keys-hub;
+            };
           };
-        };
 
         treefmt = {
           programs.alejandra.enable = true;
@@ -334,7 +336,7 @@
           builtins.mapAttrs
           (
             system: v: let
-              jobs = removeAttrs v ["default"];
+              jobs = removeAttrs v ["default"] // config.checks.${system};
             in
               jobs
               // {
