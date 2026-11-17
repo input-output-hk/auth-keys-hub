@@ -101,21 +101,33 @@
             fi
           '';
 
-          # Test graceful handling of empty users (File.delete? fix)
+          # An authoritative empty selection succeeds without upstream requests.
           empty-user-test = pkgs.runCommand "auth-keys-hub-empty-user" {} ''
             mkdir -p $TMPDIR/test-dir
-            # This should not crash even with non-existent user
             ${config.packages.auth-keys-hub}/bin/auth-keys-hub \
               --ttl 0s \
               --dir $TMPDIR/test-dir \
-              --github-users nobody123456789xyz \
-              --user testuser || true
-            # If we got here without crashing, test passed
-            echo "Empty user test passed"
+              --github-users synthetic:other \
+              --user testuser > keys
+            test ! -s keys
+            test -f $TMPDIR/test-dir/authorized_keys_testuser
+            test ! -s $TMPDIR/test-dir/authorized_keys_testuser
             touch $out
           '';
 
-          # Run Crystal unit tests
+          cache-regressions =
+            pkgs.runCommand "auth-keys-hub-cache-regressions" {
+              nativeBuildInputs = [pkgs.crystal pkgs.pkg-config];
+              buildInputs = [pkgs.openssl];
+              AUTH_KEYS_HUB_BINARY = "${config.packages.auth-keys-hub}/bin/auth-keys-hub";
+            } ''
+              cp -r ${./spec} spec
+              chmod -R +w spec
+              crystal spec spec/cache_regressions_spec.cr
+              touch $out
+            '';
+
+          # Run all Crystal specs, including CLI regressions with a local build.
           crystal-tests =
             pkgs.runCommand "auth-keys-hub-crystal-tests" {
               nativeBuildInputs = [
@@ -203,7 +215,7 @@
             fallback = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
-              description = "Key used in case of failure";
+              description = "Recovery key always served independently of the cache, including successful empty results; remove from configuration to revoke";
             };
 
             gitlab = {

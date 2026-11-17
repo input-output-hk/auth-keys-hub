@@ -143,6 +143,71 @@ For a list of available arguments:
 auth-keys-hub --help
 ```
 
+## Cache and outage policy
+
+A refresh publishes a cache only after every required GitHub team or GitLab group
+membership page and every user's key request succeeds. Timeouts, non-200 responses,
+invalid API JSON, and missing required tokens fail the refresh. GitLab key pages
+are also fetched completely. Successful empty responses are authoritative: removed
+members and keys are revoked, including replacement with an empty cache.
+
+On refresh failure, an existing cache (including an empty cache) is served without
+changing its contents or modification time. The default TTL remains one hour and
+is measured from the last successful refresh. An expired cache remains eligible
+for retry on the next invocation. This availability policy allows cached access to
+continue throughout an upstream outage; revocations take effect at the next
+successful refresh. `--force` bypasses the TTL without deleting the cache first.
+
+The configured `--fallback` key is independent recovery access, emitted on every
+authorization invocation alongside any cached keys. It remains available even
+after a successful empty response, when no users match the SSH login, or when
+refresh, cache reading, or file logging fails. This deliberately keeps the fallback
+authorized until you remove it from configuration; upstream revocations only
+revoke upstream keys. The fallback applies to every SSH login using that command.
+
+Fallback is never written to the cache or used to restart its TTL. Changing or
+removing it from configuration takes effect on the next invocation, even with a
+fresh cache. Without a previous cache, a failed refresh emits only the fallback,
+if configured, and leaves the next invocation eligible to retry.
+
+This recovery path still requires the command to run and finish. For access that
+also survives a command failing to start, hanging, or being terminated, configure
+a recovery key directly in OpenSSH's `authorized_keys` as well.
+
+The command exits 0 when it serves a readable cache (even an authoritative empty
+one) or a nonempty configured fallback. Without either, it exits 1 with empty
+stdout; previously a failed refresh could exit 0 without serving any keys.
+Diagnostics go to stderr and, when available, the cache directory's `log` file.
+Normal stdout contains only authorized keys.
+
+Refreshes for the same cache serialize using a persistent `.lock` file and recheck
+the TTL after acquiring the lock. Publication uses a unique temporary file in the
+cache directory followed by atomic rename, so readers see a complete old or new
+snapshot. Do not remove lock files while commands are running.
+
+## Tests
+
+Run the unit tests and offline CLI regressions in the development environment:
+
+```sh
+nix develop --command just test
+```
+
+Both suites use Crystal's standard `spec` runner. `crystal spec` runs all tests;
+`just test-regressions` runs only the cache regressions. The regression suite builds
+the CLI once, or uses `AUTH_KEYS_HUB_BINARY` when testing an existing binary.
+
+The regression suite uses loopback mock endpoints, synthetic keys and tokens, and
+the unchanged five-second read timeout. It covers partial failures, pagination,
+cache mtime preservation and recovery, revocation, fallback, log attribution, and
+concurrent refreshes. No live GitHub or GitLab credentials are needed. It also runs
+as the `cache-regressions` flake check:
+
+```sh
+nix build .#checks.x86_64-linux.cache-regressions
+nix build .#checks.x86_64-linux.nixos-integration
+```
+
 ## License
 
 This project is licensed under the Apache License, Version 2.0.

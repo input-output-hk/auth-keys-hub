@@ -24,13 +24,13 @@ OptionParser.parse do |parser|
   parser.on("--gitlab-users=NAMES", "GitLab user names, comma separated") { |value| akh.gitlab_users = value.split(",") }
 
   parser.on("--dir=PATH", "Directory for storing temporary files") { |value| akh.dir = Path.new(value) }
-  parser.on("--fallback=KEY", "Key used in case of failure") { |value| akh.fallback_key = value }
+  parser.on("--fallback=KEY", "Recovery key always served independently of the cache") { |value| akh.fallback_key = value }
   parser.on("--ttl=TIMESPAN", "Interval before refresh (e.g. 1d2h3h4s)") { |value| akh.ttl = parse_time_span(value) }
   parser.on("--user=LOGINNAME", "User requested by SSH connection") { |value| akh.login_user = value }
 
   parser.on("--version", "Show only version information") { puts "auth-keys-hub 0.1.0"; exit }
-  parser.on("--force", "Delete cached files first") { akh.force = true }
-  parser.on("--debug", "Some logging useful for debugging") { Log.setup(Log::Severity::Debug) }
+  parser.on("--force", "Refresh even when the cache is fresh") { akh.force = true }
+  parser.on("--debug", "Some logging useful for debugging") { Log.setup(Log::Severity::Debug, Log::IOBackend.new(io: STDERR, dispatcher: Log::DispatchMode::Sync)) }
   parser.on("-h", "--help", "Show this help") { puts parser; exit }
 
   parser.invalid_option do |flag|
@@ -40,17 +40,30 @@ OptionParser.parse do |parser|
   end
 end
 
-File.open(akh.dir / "log", "a") do |log|
-  Log.setup_from_env(
-    default_level: :debug,
-    backend: Log::IOBackend.new(io: IO::MultiWriter.new(STDERR, log), dispatcher: Log::DispatchMode::Sync),
-  )
-
+log = nil
+begin
   begin
-    akh.update
+    log = File.open(akh.dir / "log", "a")
+    Log.setup_from_env(
+      default_level: :debug,
+      backend: Log::IOBackend.new(io: IO::MultiWriter.new(STDERR, log), dispatcher: Log::DispatchMode::Sync),
+    )
   rescue ex
-    Log.error(exception: ex) { "Failed to update #{akh.file}" }
+    STDERR.puts "Failed to initialize file logging; using stderr: #{ex.message}"
   end
 
-  akh.output
+  akh.update
+rescue ex
+  # Even an unexpected refresh/logging exception must not suppress recovery access.
+  STDERR.puts "Failed to refresh #{akh.file}: #{ex.message}"
+ensure
+  begin
+    log.try &.close
+  rescue ex
+    STDERR.puts "Failed to close log file: #{ex.message}"
+  end
 end
+
+# Output does not depend on file logging, and fallback makes the command succeed
+# even if the cache cannot be read. sshd ignores keys from a command that fails.
+exit 1 unless akh.output

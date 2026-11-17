@@ -52,18 +52,29 @@ struct AuthKeysHub
     end
 
     # fetch keys from gitlab
-    def keys(config, channel) : Array(String)
-      base_uri = config.parse_gitlab_uri
-      client = HTTP::Client.new(uri: base_uri)
-      client.read_timeout = 5.seconds
-      response = client.get("/api/v4/users/#{username}/keys")
-      unless response.status == HTTP::Status::OK
-        Log.warn { "Response for gitlab user #{username} was not OK" }
-        return [] of String
+    def keys(config) : Array(String)
+      client = config.http_client(config.parse_gitlab_uri)
+      keys = [] of String
+      page = "1"
+      begin
+        loop do
+          params = URI::Params.encode({"per_page" => "100", "page" => page})
+          response = client.get("/api/v4/users/#{username}/keys?#{params}")
+          unless response.status == HTTP::Status::OK
+            raise "GitLab keys for #{username}: HTTP #{response.status_code}"
+          end
+          keys.concat Array(GitlabUserKey).from_json(response.body).select(&.viable?).map { |key|
+            "#{key.key} #{username}"
+          }
+          next_page = response.headers["x-next-page"]?
+          break if next_page.nil? || next_page.empty?
+          raise "Invalid GitLab keys pagination for #{username}" unless next_page.to_i > page.to_i
+          page = next_page
+        end
+        keys
+      ensure
+        client.close
       end
-      Array(GitlabUserKey).from_json(response.body).select(&.viable?).compact.map { |key|
-        "#{key.key} #{username}"
-      }
     end
   end
 
@@ -84,18 +95,17 @@ struct AuthKeysHub
       to_s <=> other.to_s
     end
 
-    def keys(config, channel) : Array(String)
-      base_uri = config.parse_github_uri
-      client = HTTP::Client.new(uri: base_uri)
-      client.connect_timeout = 5.seconds
-      client.write_timeout = 5.seconds
-      client.read_timeout = 5.seconds
-      response = client.get("/#{login}.keys")
-      unless response.status == HTTP::Status::OK
-        Log.warn { "Response for github user #{login} was not OK" }
-        return [] of String
+    def keys(config) : Array(String)
+      client = config.http_client(config.parse_github_uri)
+      begin
+        response = client.get("/#{login}.keys")
+        unless response.status == HTTP::Status::OK
+          raise "GitHub keys for #{login}: HTTP #{response.status_code}"
+        end
+        (response.body.split("\n") - [""]).map { |line| "#{line} #{login}" }
+      ensure
+        client.close
       end
-      (response.body.split("\n") - [""]).map { |line| "#{line} #{login}" }
     end
   end
 
@@ -118,6 +128,14 @@ struct AuthKeysHub
 
   property force = false
   property ttl = Time::Span.new(hours: 1)
+
+  def http_client(uri)
+    client = HTTP::Client.new(uri: uri)
+    client.connect_timeout = 5.seconds
+    client.write_timeout = 5.seconds
+    client.read_timeout = 5.seconds
+    client
+  end
 
   # Parse GitHub host, supporting both bare hostnames and full URLs
   def parse_github_uri : URI
@@ -164,16 +182,24 @@ struct AuthKeysHub
   end
 
   def update
-    File.delete?(file) if force
-    return unless outdated?
+    return unless force || outdated?
 
-    update_users(github_users, GitHubUser)
-    update_github_teams if github_teams_configured?
-
-    update_users(gitlab_users, GitlabUser)
-    update_gitlab_groups if gitlab_groups_configured?
-
-    update_keys
+    Log.debug { "Waiting to refresh #{file}" }
+    # Keep this inode: deleting the lock file would let waiters lock different files.
+    File.open("#{file}.lock", "a", perm: 0o600) do |lock|
+      lock.flock_exclusive do
+        # Another process may have completed the refresh while we waited.
+        return unless force || outdated?
+        self.users = [] of User
+        update_users(github_users, GitHubUser)
+        update_github_teams
+        update_users(gitlab_users, GitlabUser)
+        update_gitlab_groups
+        update_keys
+      end
+    end
+  rescue ex
+    Log.error(exception: ex) { "Failed to refresh #{file}; preserving existing cache" }
   end
 
   def update_users(list, klass)
@@ -201,13 +227,13 @@ struct AuthKeysHub
   end
 
   def update_github_team(org, team)
+    raise "GitHub team #{org}/#{team} requires a token" if github_token.nil? || github_token.try(&.empty?)
     params = URI::Params.encode({"per_page" => "100", "page" => "1"})
     base_uri = parse_github_uri
     api_host = base_uri.scheme == "https" && base_uri.host == "github.com" ? "api.github.com" : base_uri.host.not_nil!
     uri = URI.new(base_uri.scheme, api_host, base_uri.port, "/orgs/#{org}/teams/#{team}/members", params)
 
-    client = HTTP::Client.new(uri: uri)
-    client.read_timeout = 5.seconds
+    client = http_client(uri)
     client.before_request do |request|
       request.headers = HTTP::Headers{
         "Accept"               => "application/vnd.github+json",
@@ -220,13 +246,14 @@ struct AuthKeysHub
     end
 
     update_github_team_page(client, uri)
+  ensure
+    client.try &.close
   end
 
   def update_github_team_page(client, uri)
     response = client.get(uri.request_target)
     unless response.status == HTTP::Status::OK
-      Log.warn { "Response for #{uri.request_target} was not OK" }
-      return
+      raise "GitHub membership #{uri.request_target}: HTTP #{response.status_code}"
     end
     users.concat Array(GitHubUser).from_json(response.body)
 
@@ -235,13 +262,7 @@ struct AuthKeysHub
       update_github_team_page(client, URI.parse($~.try(&.["url"])))
     end
   rescue ex
-    Log.error(exception: ex) do
-      if response
-        response.inspect
-      else
-        "Failed to fetch #{uri}"
-      end
-    end
+    raise Exception.new("Failed to fetch GitHub membership #{uri.request_target}", cause: ex)
   end
 
   def update_gitlab_groups
@@ -256,16 +277,18 @@ struct AuthKeysHub
   end
 
   def update_gitlab_group(group)
+    raise "GitLab group #{group} requires a token" if gitlab_token.nil? || gitlab_token.try(&.empty?)
     base_uri = parse_gitlab_uri
     uri = URI.new(base_uri.scheme, base_uri.host, base_uri.port, "/api/v4/groups/#{group}/members/all")
 
-    client = HTTP::Client.new(uri: uri)
-    client.read_timeout = 5.seconds
+    client = http_client(uri)
     client.before_request do |request|
       request.headers["PRIVATE-TOKEN"] = gitlab_token.not_nil!
     end
 
     update_gitlab_group_page(client, uri)
+  ensure
+    client.try &.close
   end
 
   def update_gitlab_group_page(client, uri, page = 1)
@@ -273,95 +296,93 @@ struct AuthKeysHub
     uri.query = params
     response = client.get(uri.request_target)
     unless response.status == HTTP::Status::OK
-      Log.warn { "Response from #{uri.request_target} was not OK" }
-      return
+      raise "GitLab membership #{uri.request_target}: HTTP #{response.status_code}"
     end
 
     users.concat Array(GitlabUser).from_json(response.body)
 
     if (next_page = response.headers["x-next-page"]?) && next_page != ""
+      raise "Invalid GitLab membership pagination" unless next_page.to_i > page
       update_gitlab_group_page(client, uri, next_page.to_i)
     end
   rescue ex
-    Log.error(exception: ex) do
-      if response
-        response.inspect
-      else
-        "Failed to fetch #{uri}"
-      end
-    end
+    raise Exception.new("Failed to fetch GitLab membership #{uri.request_target}", cause: ex)
   end
 
+  alias KeyResult = Tuple(User, Array(String) | Exception)
+
   def parallel_keys(channel, user)
-    result = user.keys(self, channel)
-  rescue ex
-    Log.error(exception: ex) { "Failed to fetch key for #{user}" }
-  ensure
-    if result
-      channel.send(result)
-    elsif ex
-      channel.send(ex)
+    result = begin
+      user.keys(self)
+    rescue ex
+      ex
     end
+    channel.send({user, result})
   end
 
   def update_keys
     users.sort!
     users.uniq!
-
-    if users.empty?
-      Log.debug { "No users matching this login name" }
-      File.delete?(file)
-      return
-    end
-
     Log.debug { "Updating #{file} file for #{users.inspect}" }
 
-    channel = Channel(Array(String) | Exception).new
-
+    channel = Channel(KeyResult).new
     users.each do |user|
       spawn parallel_keys(channel, user), name: user.inspect
     end
 
-    success = 0
-
-    File.open("#{file}.tmp", "w+") do |fd|
-      users.each do |user|
-        case recv = channel.receive
-        in Array(String)
-          recv.each do |line|
-            success += 1
-            fd.puts(line)
-          end
-        in Exception
-          Log.error(exception: recv) { "Updating keys for #{user}" }
-        end
+    keys = [] of String
+    failed = false
+    # Drain every result, even after failure, so no worker remains blocked.
+    users.size.times do
+      user, result = channel.receive
+      case result
+      in Array(String)
+        Log.debug { "Fetched keys for #{user.to_s}" }
+        keys.concat(result)
+      in Exception
+        failed = true
+        Log.error(exception: result) { "Failed to fetch keys for #{user.to_s}" }
       end
     end
-
     channel.close
+    raise "One or more key requests failed" if failed
 
-    if success == 0
-      Log.warn { "No user keys found." }
-
-      if fallback = fallback_key
-        File.write("#{file}.tmp", fallback)
-        Log.warn { "Using fallback key: #{fallback.inspect}" }
-      else
-        Log.warn { "Will not update." }
-        return
-      end
+    # An empty successful snapshot is authoritative and revokes old access.
+    # A unique file in the cache directory keeps rename atomic on this filesystem.
+    temporary = File.tempfile(file.basename, ".tmp", dir: dir.to_s)
+    begin
+      keys.sort.each { |key| temporary.puts(key) }
+      temporary.flush
+      temporary.fsync
+      temporary.close
+      File.rename(temporary.path, file)
+    ensure
+      temporary.close
+      File.delete?(temporary.path)
     end
-
-    File.rename("#{file}.tmp", file)
-  rescue ex
-    Log.error(exception: ex) { "Updating keys" }
   end
 
-  def output
-    return unless File.file?(file)
+  # Fallback is independently configured access, always served and never cached.
+  # Emit it before reading the cache so a cache failure cannot suppress it.
+  def output(io : IO = STDOUT) : Bool
+    served_fallback = false
+    if fallback = fallback_key
+      unless fallback.empty?
+        io.puts(fallback)
+        served_fallback = true
+      end
+    end
 
-    # File is already filtered to contain only keys for this Unix user
-    puts File.read(file)
+    begin
+      return served_fallback unless File.exists?(file)
+
+      io << File.read(file)
+      true
+    rescue ex
+      # File logging may itself be broken; keep this error path independent.
+      STDERR.puts "Failed to read cache #{file}: #{ex.message}"
+      served_fallback
+    end
   end
 end
 
