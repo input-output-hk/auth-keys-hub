@@ -1,6 +1,6 @@
 require "spec"
 require "file_utils"
-require "../src/auth-keys-hub"
+require "../src/auth-keys-hub/core"
 
 describe "parse_time_span" do
   it "parses hours correctly" do
